@@ -249,6 +249,7 @@
       <button class="app-tab active" data-tab="spese">🍖 Spese</button>
       <button class="app-tab" data-tab="saldi">💰 Saldi</button>
       <button class="app-tab" data-tab="regola">🤝 Chi paga chi</button>
+      <button class="app-tab" data-tab="wishlist">🎁 Wishlist</button>
       <button class="app-tab" data-tab="chat">💬 Chat</button>
       <button class="app-tab" data-tab="persone">👥 Gruppo</button>
     </nav>
@@ -306,6 +307,19 @@
       <div id="settlementsContent"></div>
     </div>
 
+    <!-- ═══ TAB: WISHLIST ═══ -->
+    <div class="app-panel" id="tab-wishlist">
+      <div class="card add-expense-card">
+        <div class="card-title">🎁 Cosa vorresti alla grigliata?</div>
+        <div class="wishlist-form">
+          <select id="wishlistAuthorSelect"></select>
+          <input type="text" id="wishlistInput" placeholder="Es: Costine di maiale, Focaccia...">
+          <button class="btn btn-primary" onclick="addWishlistItem()">Aggiungi 🎁</button>
+        </div>
+      </div>
+      <div id="wishlistContent"></div>
+    </div>
+
     <!-- ═══ TAB: CHAT ═══ -->
     <div class="app-panel" id="tab-chat">
       <div class="card chat-container">
@@ -348,6 +362,20 @@
       </div>
 
       <div id="participantsList"></div>
+
+      <!-- Backup Section -->
+      <div class="section-title" style="margin-top:1.5rem;">💾 Backup & Ripristino</div>
+      <div class="card">
+        <div class="card-title">💾 Gestione Backup</div>
+        <p style="font-size:0.8rem; color:#A1887F; margin-bottom:0.5rem;">
+          I dati sono salvati su server e sincronizzati su tutti i dispositivi. Crea backup per sicurezza!
+        </p>
+        <div class="backup-form">
+          <input type="text" id="backupDescInput" placeholder="Descrizione backup (opzionale)">
+          <button class="btn btn-primary" onclick="createBackup()">Crea Backup 💾</button>
+        </div>
+        <div id="backupsList" style="margin-top:0.8rem;"></div>
+      </div>
     </div>
   </div>
 

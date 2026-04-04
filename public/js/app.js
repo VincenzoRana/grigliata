@@ -56,6 +56,32 @@ const IDLE_ROASTS = [
   { emoji: '🏃', title: 'SCAPPA!', text: '{name} è sparito/a quando era ora di pagare!' },
 ];
 
+// ── Wishlist Fun Messages ──
+const WISHLIST_ASSIGN_MESSAGES = [
+  { emoji: '🫵', title: 'MISSIONE PER TE!', text: '{assignee}, {assigner} ti ha assegnato: "{item}". Accetti la sfida?' },
+  { emoji: '📦', title: 'CONSEGNA SPECIALE!', text: '{assignee}, hai un pacco da ritirare: "{item}" (da parte di {assigner})!' },
+  { emoji: '🎯', title: 'SEI STATO/A SCELTO/A!', text: '{assigner} crede in te per: "{item}". Non deludere la squadra!' },
+  { emoji: '🦸', title: 'EROE/EROINA CERCASI!', text: '{assignee}, solo tu puoi salvare la grigliata portando: "{item}"!' },
+];
+
+const WISHLIST_ACCEPT_MESSAGES = [
+  { emoji: '💪', title: 'CHE CAMPIONE!', text: '{name} ha accettato! La grigliata è salva!' },
+  { emoji: '🦸', title: 'EROE/EROINA!', text: '{name} si sacrifica per il bene della grigliata!' },
+  { emoji: '🏆', title: 'MVP!', text: '{name} è il/la Most Valuable Partecipante!' },
+];
+
+const WISHLIST_DECLINE_MESSAGES = [
+  { emoji: '🏃', title: 'FUGA!', text: '{name} è scappato/a! Qualcun altro deve farsi avanti!' },
+  { emoji: '😤', title: 'RIFIUTO!', text: '{name} ha detto NO! Chi sarà il prossimo coraggioso/a?' },
+  { emoji: '🐔', title: 'CHICKEN!', text: '{name} ha fatto il/la gallina! Bawk bawk bawk!' },
+];
+
+const WISHLIST_SELF_CLAIM = [
+  { emoji: '🦸', title: 'VOLONTARIO/A!', text: '{name} si è offerto/a volontario/a! Standing ovation!' },
+  { emoji: '👑', title: 'RE/REGINA!', text: '{name} ha preso in mano la situazione! Chapeau!' },
+  { emoji: '💎', title: 'GEMMA RARA!', text: '{name} è una persona speciale! Grazie di esistere!' },
+];
+
 // ── Default State ──
 const DEFAULT_STATE = {
   participants: [
@@ -78,22 +104,77 @@ const DEFAULT_STATE = {
   expenses: [],
   chatMessages: [],
   shoppingList: [],
+  wishlist: [],
   nextId: 10,
 };
 
 // ── State ──
-let state = loadState();
+let state = JSON.parse(JSON.stringify(DEFAULT_STATE));
+let stateVersion = 0;
+let saveTimeout = null;
+let isSaving = false;
+let isLoading = false;
 
-function loadState() {
+// ── API Layer ──
+async function loadStateFromServer() {
   try {
-    const saved = localStorage.getItem('grigliata_state');
-    if (saved) return JSON.parse(saved);
-  } catch (e) { /* ignore */ }
-  return JSON.parse(JSON.stringify(DEFAULT_STATE));
+    const res = await fetch('/api/state');
+    if (!res.ok) throw new Error('Failed to load state');
+    const { state: serverState, version } = await res.json();
+    stateVersion = version;
+    if (serverState) {
+      // Merge with defaults to handle missing fields
+      state = { ...JSON.parse(JSON.stringify(DEFAULT_STATE)), ...serverState };
+      if (!state.wishlist) state.wishlist = [];
+    }
+    return true;
+  } catch (e) {
+    console.warn('Failed to load from server, using defaults:', e);
+    return false;
+  }
 }
 
-function saveState() {
-  localStorage.setItem('grigliata_state', JSON.stringify(state));
+async function saveStateToServer() {
+  if (isSaving) return;
+  isSaving = true;
+  try {
+    const res = await fetch('/api/state', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ state }),
+    });
+    if (res.ok) {
+      const { version } = await res.json();
+      stateVersion = version;
+    }
+  } catch (e) {
+    console.warn('Failed to save to server:', e);
+  }
+  isSaving = false;
+}
+
+function debouncedSave() {
+  if (saveTimeout) clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(() => saveStateToServer(), 300);
+}
+
+// Poll for changes from other devices
+async function pollForChanges() {
+  if (isLoading || isSaving) return;
+  try {
+    const res = await fetch('/api/state/version');
+    if (!res.ok) return;
+    const { version } = await res.json();
+    if (version > stateVersion) {
+      isLoading = true;
+      await loadStateFromServer();
+      isLoading = false;
+      renderAll();
+      renderChat();
+    }
+  } catch (e) {
+    // Silently ignore polling errors
+  }
 }
 
 function genId() {
@@ -153,48 +234,32 @@ function getCoupleName(coupleId) {
 function calculateSettlements() {
   const units = [];
 
-  // Add couples as units
   state.couples.forEach(c => {
     const balance = getCoupleBalance(c.id);
     units.push({
-      id: c.id,
-      type: 'couple',
-      name: getCoupleName(c.id),
-      avatar: c.avatar,
-      balance: Math.round(balance * 100) / 100,
+      id: c.id, type: 'couple', name: getCoupleName(c.id),
+      avatar: c.avatar, balance: Math.round(balance * 100) / 100,
     });
   });
 
-  // Add singles as units
-  state.participants
-    .filter(p => !p.coupleId)
-    .forEach(p => {
-      const balance = getPersonBalance(p.id);
-      units.push({
-        id: p.id,
-        type: 'single',
-        name: p.name,
-        avatar: p.avatar,
-        balance: Math.round(balance * 100) / 100,
-      });
+  state.participants.filter(p => !p.coupleId).forEach(p => {
+    const balance = getPersonBalance(p.id);
+    units.push({
+      id: p.id, type: 'single', name: p.name,
+      avatar: p.avatar, balance: Math.round(balance * 100) / 100,
     });
+  });
 
-  // Separate debtors and creditors
   const debtors = units.filter(u => u.balance < -0.01).map(u => ({ ...u, amount: Math.abs(u.balance) }));
   const creditors = units.filter(u => u.balance > 0.01).map(u => ({ ...u, amount: u.balance }));
-
-  // Sort by amount descending
   debtors.sort((a, b) => b.amount - a.amount);
   creditors.sort((a, b) => b.amount - a.amount);
 
   const transactions = [];
   let di = 0, ci = 0;
-
   while (di < debtors.length && ci < creditors.length) {
-    const d = debtors[di];
-    const c = creditors[ci];
+    const d = debtors[di], c = creditors[ci];
     const amount = Math.min(d.amount, c.amount);
-
     if (amount > 0.01) {
       transactions.push({
         from: { name: d.name, avatar: d.avatar },
@@ -202,10 +267,8 @@ function calculateSettlements() {
         amount: Math.round(amount * 100) / 100,
       });
     }
-
     d.amount -= amount;
     c.amount -= amount;
-
     if (d.amount < 0.01) di++;
     if (c.amount < 0.01) ci++;
   }
@@ -217,7 +280,6 @@ function calculateSettlements() {
 function getPersonBadge(personId) {
   const total = getPersonTotal(personId);
   const totals = state.participants.map(p => ({ id: p.id, total: getPersonTotal(p.id) }));
-
   if (totals.length === 0) return null;
 
   const maxSpender = totals.reduce((a, b) => a.total > b.total ? a : b);
@@ -261,6 +323,9 @@ function showFunModal(emoji, title, text, btnText = 'OK! 😂') {
   overlay.querySelector('.modal-title').textContent = title;
   overlay.querySelector('.modal-text').textContent = text;
   overlay.querySelector('.modal-btn').textContent = btnText;
+  overlay.querySelector('.modal-btn').onclick = closeFunModal;
+  // Remove any extra buttons from previous modals
+  overlay.querySelectorAll('.modal-extra-btn').forEach(b => b.remove());
   overlay.classList.add('show');
 }
 
@@ -270,24 +335,14 @@ function closeFunModal() {
 
 function getExpenseReaction(amount, personId) {
   const personExpenses = getPersonExpenses(personId);
-  // First expense for this person
   if (personExpenses.length === 0) {
     const r = EXPENSE_REACTIONS.first;
     return r[Math.floor(Math.random() * r.length)];
   }
-  if (amount >= 80) {
-    const r = EXPENSE_REACTIONS.huge;
-    return r[Math.floor(Math.random() * r.length)];
-  }
-  if (amount >= 40) {
-    const r = EXPENSE_REACTIONS.big;
-    return r[Math.floor(Math.random() * r.length)];
-  }
-  if (amount <= 3 && amount > 0) {
-    const r = EXPENSE_REACTIONS.tiny;
-    return r[Math.floor(Math.random() * r.length)];
-  }
-  return null; // No reaction for normal amounts
+  if (amount >= 80) return EXPENSE_REACTIONS.huge[Math.floor(Math.random() * EXPENSE_REACTIONS.huge.length)];
+  if (amount >= 40) return EXPENSE_REACTIONS.big[Math.floor(Math.random() * EXPENSE_REACTIONS.big.length)];
+  if (amount <= 3 && amount > 0) return EXPENSE_REACTIONS.tiny[Math.floor(Math.random() * EXPENSE_REACTIONS.tiny.length)];
+  return null;
 }
 
 function spawnConfetti() {
@@ -327,7 +382,8 @@ function renderAll() {
   renderParticipants();
   renderChatAuthorSelect();
   renderShoppingList();
-  saveState();
+  renderWishlist();
+  debouncedSave();
 }
 
 function renderExpenses() {
@@ -336,13 +392,11 @@ function renderExpenses() {
   const share = getPerPersonShare();
   const count = state.expenses.length;
 
-  // Stats
   document.getElementById('statTotal').textContent = '€' + total.toFixed(2);
   document.getElementById('statShare').textContent = '€' + share.toFixed(2);
   document.getElementById('statCount').textContent = count;
   document.getElementById('statPeople').textContent = state.participants.length;
 
-  // Group expenses by person
   let html = '';
   state.participants.forEach(p => {
     const expenses = getPersonExpenses(p.id);
@@ -388,7 +442,6 @@ function renderExpenses() {
 
   container.innerHTML = html;
 
-  // Update expense form select
   const select = document.getElementById('expensePersonSelect');
   if (select) {
     const currentVal = select.value;
@@ -431,7 +484,6 @@ function renderBalances() {
     });
   } else {
     html += '<div class="section-title">Saldo per coppia / singolo</div>';
-    // Couples
     state.couples.forEach(c => {
       const total = getCoupleTotal(c.id);
       const share = getCoupleShare(c.id);
@@ -451,7 +503,6 @@ function renderBalances() {
         </div>
       </div>`;
     });
-    // Singles
     state.participants.filter(p => !p.coupleId).forEach(p => {
       const total = getPersonTotal(p.id);
       const balance = getPersonBalance(p.id);
@@ -508,7 +559,7 @@ function renderSettlements() {
       Le coppie sono considerate come un'unica entità. Servono solo <strong>${transactions.length}</strong> trasferiment${transactions.length === 1 ? 'o' : 'i'}!
     </p>`;
 
-  transactions.forEach((t, i) => {
+  transactions.forEach(t => {
     html += `<div class="settlement-item">
       <div class="settlement-from">
         <span style="font-size:1.3rem;">${t.from.avatar}</span>
@@ -524,7 +575,6 @@ function renderSettlements() {
   });
 
   html += '</div>';
-
   html += `<button class="btn btn-primary" onclick="celebrateSettlement()" style="width:100%; margin-top:0.5rem; justify-content:center;">
     🎉 Festeggia il pareggio!
   </button>`;
@@ -536,7 +586,6 @@ function renderParticipants() {
   const container = document.getElementById('participantsList');
   let html = '';
 
-  // Couples section
   if (state.couples.length > 0) {
     html += '<div class="section-title">❤️ Coppie</div>';
     state.couples.forEach(c => {
@@ -568,7 +617,6 @@ function renderParticipants() {
     });
   }
 
-  // Singles section
   const singles = state.participants.filter(p => !p.coupleId);
   if (singles.length > 0) {
     html += '<div class="section-title">👤 Singoli</div>';
@@ -585,7 +633,6 @@ function renderParticipants() {
 
   container.innerHTML = html;
 
-  // Couple partner select: show only singles
   const coupleSelect = document.getElementById('couplePartnerSelect');
   if (coupleSelect) {
     coupleSelect.innerHTML = '<option value="">Nessuno (singolo)</option>' +
@@ -594,15 +641,19 @@ function renderParticipants() {
 }
 
 function renderChatAuthorSelect() {
-  const select = document.getElementById('chatAuthorSelect');
-  if (!select) return;
-  const currentVal = select.value;
-  select.innerHTML = state.participants.map(p =>
+  const options = state.participants.map(p =>
     `<option value="${p.id}">${p.avatar} ${p.name}</option>`
   ).join('');
-  if (currentVal && state.participants.find(p => p.id === currentVal)) {
-    select.value = currentVal;
-  }
+
+  ['chatAuthorSelect', 'wishlistAuthorSelect'].forEach(id => {
+    const select = document.getElementById(id);
+    if (!select) return;
+    const currentVal = select.value;
+    select.innerHTML = options;
+    if (currentVal && state.participants.find(p => p.id === currentVal)) {
+      select.value = currentVal;
+    }
+  });
 }
 
 function renderChat() {
@@ -663,6 +714,188 @@ function renderShoppingList() {
   container.innerHTML = html;
 }
 
+// ── Wishlist Rendering ──
+function renderWishlist() {
+  const container = document.getElementById('wishlistContent');
+  if (!container) return;
+
+  if (!state.wishlist) state.wishlist = [];
+
+  // Stats
+  const total = state.wishlist.length;
+  const covered = state.wishlist.filter(w => w.status === 'claimed' || w.status === 'accepted').length;
+  const pending = state.wishlist.filter(w => w.status === 'pending').length;
+  const open = state.wishlist.filter(w => w.status === 'open' || w.status === 'declined').length;
+  const pct = total > 0 ? Math.round((covered / total) * 100) : 0;
+
+  let html = '';
+
+  // Progress bar
+  if (total > 0) {
+    html += `<div class="card wishlist-progress-card">
+      <div class="wishlist-progress-header">
+        <span class="wishlist-progress-title">🎯 Copertura Wishlist</span>
+        <span class="wishlist-progress-pct">${pct}%</span>
+      </div>
+      <div class="wishlist-progress-bar">
+        <div class="wishlist-progress-fill" style="width:${pct}%"></div>
+      </div>
+      <div class="wishlist-progress-stats">
+        <span>✅ ${covered} coperte</span>
+        <span>⏳ ${pending} in attesa</span>
+        <span>❓ ${open} scoperte</span>
+      </div>
+    </div>`;
+  }
+
+  // Fun message based on coverage
+  if (total > 0) {
+    let funMsg = '';
+    if (pct === 100) funMsg = '🎉 Tutto coperto! Siete una macchina da grigliata!';
+    else if (pct >= 75) funMsg = '💪 Quasi tutto coperto! Ancora uno sforzo!';
+    else if (pct >= 50) funMsg = '🔥 A metà strada! Chi si offre per il resto?';
+    else if (pct >= 25) funMsg = '😅 Siamo messi malino... servono volontari!';
+    else funMsg = '🆘 Emergenza grigliata! Nessuno porta niente?!';
+
+    if (funMsg) {
+      html += `<div class="wishlist-fun-msg">${funMsg}</div>`;
+    }
+  }
+
+  // Items grouped by status
+  const statusOrder = ['open', 'declined', 'pending', 'claimed', 'accepted'];
+  const statusLabels = {
+    open: '❓ Da assegnare',
+    declined: '😤 Rifiutate (cercasi eroi!)',
+    pending: '⏳ In attesa di risposta',
+    claimed: '💪 Prese in carico',
+    accepted: '✅ Confermate',
+  };
+
+  const grouped = {};
+  state.wishlist.forEach(item => {
+    const key = item.status === 'declined' ? 'open' : item.status;
+    if (!grouped[key]) grouped[key] = [];
+    grouped[key].push(item);
+  });
+
+  // Open/declined items first
+  statusOrder.forEach(status => {
+    const items = grouped[status];
+    if (!items || items.length === 0) return;
+
+    html += `<div class="section-title">${statusLabels[status]}</div>`;
+    items.forEach(item => {
+      html += renderWishlistItem(item);
+    });
+  });
+
+  if (total === 0) {
+    html = `<div class="empty-state">
+      <div class="empty-emoji">🎁</div>
+      <p>Nessun desiderio ancora!<br>Cosa vorresti alla grigliata?</p>
+    </div>`;
+  }
+
+  container.innerHTML = html;
+}
+
+function renderWishlistItem(item) {
+  const requester = state.participants.find(p => p.id === item.requestedById);
+  const assignee = item.assignedToId ? state.participants.find(p => p.id === item.assignedToId) : null;
+  const assigner = item.assignedById ? state.participants.find(p => p.id === item.assignedById) : null;
+  const currentUser = document.getElementById('wishlistAuthorSelect')?.value;
+
+  const requesterName = requester ? requester.name : 'Anonimo';
+  const requesterAvatar = requester ? requester.avatar : '👤';
+
+  let statusClass = 'wishlist-status-' + item.status;
+  let statusEmoji = '';
+  let actionButtons = '';
+
+  switch (item.status) {
+    case 'open':
+    case 'declined':
+      statusEmoji = item.status === 'declined' ? '😤' : '❓';
+      actionButtons = `
+        <button class="btn btn-primary btn-sm" onclick="claimWishlistItem('${item.id}')">🙋 Ci penso io!</button>
+        <button class="btn btn-secondary btn-sm" onclick="assignWishlistItem('${item.id}')">🫵 Assegna a...</button>
+      `;
+      break;
+    case 'pending':
+      statusEmoji = '⏳';
+      if (assignee && currentUser === item.assignedToId) {
+        actionButtons = `
+          <button class="btn btn-primary btn-sm" onclick="respondWishlistItem('${item.id}', true)">✅ Accetto!</button>
+          <button class="btn btn-danger btn-sm" onclick="respondWishlistItem('${item.id}', false)">❌ No grazie!</button>
+        `;
+      } else {
+        actionButtons = `<span class="wishlist-pending-text">In attesa di ${assignee ? assignee.name : '...'}</span>`;
+      }
+      break;
+    case 'claimed':
+      statusEmoji = '💪';
+      actionButtons = `<span class="wishlist-claimed-text">${assignee ? assignee.avatar : '👤'} ${assignee ? assignee.name : '?'} ci pensa!</span>`;
+      break;
+    case 'accepted':
+      statusEmoji = '✅';
+      actionButtons = `<span class="wishlist-accepted-text">${assignee ? assignee.avatar : '👤'} ${assignee ? assignee.name : '?'} ha accettato!</span>`;
+      break;
+  }
+
+  return `<div class="card wishlist-item ${statusClass}">
+    <div class="wishlist-item-header">
+      <div class="wishlist-item-emoji">${statusEmoji}</div>
+      <div class="wishlist-item-info">
+        <div class="wishlist-item-text">${escapeHtml(item.text)}</div>
+        <div class="wishlist-item-meta">
+          Desiderato da ${requesterAvatar} ${requesterName}
+          ${assigner && item.status === 'pending' ? ` · Assegnato da ${assigner.avatar} ${assigner.name}` : ''}
+        </div>
+      </div>
+      <button onclick="removeWishlistItem('${item.id}')" class="wishlist-remove-btn" title="Rimuovi">✕</button>
+    </div>
+    <div class="wishlist-item-actions">${actionButtons}</div>
+  </div>`;
+}
+
+// ── Backup Rendering ──
+async function renderBackups() {
+  const container = document.getElementById('backupsList');
+  if (!container) return;
+
+  try {
+    const res = await fetch('/api/backups');
+    const { backups } = await res.json();
+
+    if (backups.length === 0) {
+      container.innerHTML = `<div class="empty-state" style="padding:0.5rem;">
+        <p style="font-size:0.85rem;">Nessun backup ancora.<br>Crea il primo! 💾</p>
+      </div>`;
+      return;
+    }
+
+    let html = '';
+    backups.forEach(b => {
+      const date = new Date(b.created_at + 'Z').toLocaleString('it-IT');
+      html += `<div class="backup-item">
+        <div class="backup-info">
+          <div class="backup-desc">${escapeHtml(b.description)}</div>
+          <div class="backup-date">${date}</div>
+        </div>
+        <div class="backup-actions">
+          <button class="btn btn-secondary btn-sm" onclick="restoreBackup(${b.id})" title="Ripristina">🔄</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteBackup(${b.id})" title="Elimina">🗑️</button>
+        </div>
+      </div>`;
+    });
+
+    container.innerHTML = html;
+  } catch (e) {
+    container.innerHTML = '<p style="color:#C62828; font-size:0.8rem;">Errore nel caricamento dei backup.</p>';
+  }
+}
+
 // ── Event Handlers ──
 function addExpense() {
   const personId = document.getElementById('expensePersonSelect').value;
@@ -675,7 +908,6 @@ function addExpense() {
     return;
   }
 
-  // Get reaction before adding expense
   const reaction = getExpenseReaction(amount, personId);
 
   state.expenses.push({
@@ -691,7 +923,6 @@ function addExpense() {
 
   renderAll();
 
-  // Show fun reaction
   if (reaction) {
     setTimeout(() => showFunModal(reaction.emoji, reaction.title, reaction.text), 300);
   }
@@ -707,7 +938,6 @@ function editExpense(expenseId) {
   if (!expense) return;
 
   const overlay = document.getElementById('editModalOverlay');
-  document.getElementById('editModalTitle').textContent = '✏️ Modifica Spesa';
   overlay.innerHTML = `<div class="edit-modal">
     <h3>✏️ Modifica Spesa</h3>
     <label>Descrizione</label>
@@ -757,11 +987,7 @@ function addPerson() {
       const coupleAvatar = COUPLE_AVATARS[Math.floor(Math.random() * COUPLE_AVATARS.length)];
       newPerson.coupleId = coupleId;
       partner.coupleId = coupleId;
-      state.couples.push({
-        id: coupleId,
-        members: [partner.id, newPerson.id],
-        avatar: coupleAvatar,
-      });
+      state.couples.push({ id: coupleId, members: [partner.id, newPerson.id], avatar: coupleAvatar });
       showFunModal('💕', 'NUOVA COPPIA!', `${partner.name} e ${name} sono ufficialmente una coppia! Awww! 🥰`, 'Auguri! 🎉');
     }
   } else {
@@ -776,7 +1002,6 @@ function removePerson(personId) {
   const person = state.participants.find(p => p.id === personId);
   if (!person) return;
 
-  // Remove from couple
   if (person.coupleId) {
     const couple = state.couples.find(c => c.id === person.coupleId);
     if (couple) {
@@ -787,9 +1012,7 @@ function removePerson(personId) {
     }
   }
 
-  // Remove expenses
   state.expenses = state.expenses.filter(e => e.personId !== personId);
-  // Remove person
   state.participants = state.participants.filter(p => p.id !== personId);
 
   showFunModal('👋', 'ADDIO!', `${person.name} ci ha lasciato... più carne per noi! 🍖`, 'Ciao ciao!');
@@ -826,7 +1049,7 @@ function makeCouple() {
   }
 
   const overlay = document.getElementById('editModalOverlay');
-  let html = `<div class="edit-modal">
+  overlay.innerHTML = `<div class="edit-modal">
     <h3>💕 Crea Coppia</h3>
     <label>Persona 1</label>
     <select id="couplePerson1">
@@ -841,10 +1064,8 @@ function makeCouple() {
       <button class="btn btn-primary" onclick="saveMakeCouple()">Unisci! 💕</button>
     </div>
   </div>`;
-  overlay.innerHTML = html;
-  // Default second select to second person
   if (singles.length >= 2) {
-    document.getElementById('couplePerson2').value = singles[1].id;
+    setTimeout(() => { document.getElementById('couplePerson2').value = singles[1].id; }, 0);
   }
   overlay.classList.add('show');
 }
@@ -878,8 +1099,7 @@ let emojiPickerIsCouple = false;
 function openEmojiPicker(targetId, isCouple = false) {
   emojiPickerTarget = targetId;
   emojiPickerIsCouple = isCouple;
-  const overlay = document.getElementById('emojiPickerOverlay');
-  overlay.classList.add('show');
+  document.getElementById('emojiPickerOverlay').classList.add('show');
 }
 
 function selectEmoji(emoji) {
@@ -914,18 +1134,13 @@ function sendChatMessage() {
 
   input.value = '';
   renderChat();
-  saveState();
+  debouncedSave();
 
-  // Fun auto-responses for certain keywords
   const lower = text.toLowerCase();
   if (lower.includes('birra') || lower.includes('birre')) {
-    setTimeout(() => {
-      showFunModal('🍺', 'BIRRA!', 'Qualcuno ha detto birra? Questo si che è un piano!', 'Cin cin!');
-    }, 500);
+    setTimeout(() => showFunModal('🍺', 'BIRRA!', 'Qualcuno ha detto birra? Questo si che è un piano!', 'Cin cin!'), 500);
   } else if (lower.includes('vegetarian') || lower.includes('insalata') || lower.includes('verdur')) {
-    setTimeout(() => {
-      showFunModal('🥬', 'AHAHAH!', 'Verdure alla GRIGLIATA? Coraggioso/a!', 'Perché no! 🤷');
-    }, 500);
+    setTimeout(() => showFunModal('🥬', 'AHAHAH!', 'Verdure alla GRIGLIATA? Coraggioso/a!', 'Perché no! 🤷'), 500);
   }
 }
 
@@ -936,30 +1151,214 @@ function addShoppingItem() {
   const text = input.value.trim();
   if (!text) return;
 
-  state.shoppingList.push({
-    text,
-    authorId,
-    checked: false,
-    timestamp: Date.now(),
-  });
-
+  state.shoppingList.push({ text, authorId, checked: false, timestamp: Date.now() });
   input.value = '';
   renderShoppingList();
-  saveState();
+  debouncedSave();
 }
 
 function toggleShoppingItem(index) {
   if (state.shoppingList[index]) {
     state.shoppingList[index].checked = !state.shoppingList[index].checked;
     renderShoppingList();
-    saveState();
+    debouncedSave();
   }
 }
 
 function removeShoppingItem(index) {
   state.shoppingList.splice(index, 1);
   renderShoppingList();
-  saveState();
+  debouncedSave();
+}
+
+// ── Wishlist Event Handlers ──
+function addWishlistItem() {
+  const input = document.getElementById('wishlistInput');
+  const authorId = document.getElementById('wishlistAuthorSelect')?.value;
+  const text = input.value.trim();
+  if (!text || !authorId) {
+    showFunModal('🤨', 'EHM...', 'Scrivi cosa vorresti alla grigliata!', 'OK!');
+    return;
+  }
+
+  const author = state.participants.find(p => p.id === authorId);
+  state.wishlist.push({
+    id: genId(),
+    text,
+    requestedById: authorId,
+    assignedToId: null,
+    assignedById: null,
+    status: 'open',
+    timestamp: Date.now(),
+  });
+
+  input.value = '';
+  renderAll();
+
+  showFunModal('🎁', 'DESIDERIO AGGIUNTO!', `${author ? author.name : 'Qualcuno'} vuole: "${text}". Chi si offre? 🤔`, 'Vediamo chi si fa avanti!');
+}
+
+function claimWishlistItem(itemId) {
+  const item = state.wishlist.find(w => w.id === itemId);
+  if (!item) return;
+
+  const currentUser = document.getElementById('wishlistAuthorSelect')?.value;
+  if (!currentUser) return;
+
+  const person = state.participants.find(p => p.id === currentUser);
+  item.assignedToId = currentUser;
+  item.assignedById = currentUser;
+  item.status = 'claimed';
+
+  renderAll();
+
+  const msg = WISHLIST_SELF_CLAIM[Math.floor(Math.random() * WISHLIST_SELF_CLAIM.length)];
+  showFunModal(msg.emoji, msg.title, msg.text.replace('{name}', person ? person.name : '???'));
+}
+
+function assignWishlistItem(itemId) {
+  const item = state.wishlist.find(w => w.id === itemId);
+  if (!item) return;
+
+  const currentUser = document.getElementById('wishlistAuthorSelect')?.value;
+  const others = state.participants.filter(p => p.id !== currentUser);
+
+  if (others.length === 0) {
+    showFunModal('🤷', 'NESSUNO!', 'Non ci sono altre persone a cui assegnarlo!', 'OK!');
+    return;
+  }
+
+  const overlay = document.getElementById('editModalOverlay');
+  overlay.innerHTML = `<div class="edit-modal">
+    <h3>🫵 Assegna a qualcuno!</h3>
+    <p style="font-size:0.85rem; color:#8D6E63; margin-bottom:0.8rem;">Chi deve portare: <strong>${escapeHtml(item.text)}</strong>?</p>
+    <label>Scegli il/la fortunato/a</label>
+    <select id="assignTargetSelect">
+      ${others.map(p => `<option value="${p.id}">${p.avatar} ${p.name}</option>`).join('')}
+    </select>
+    <div class="btn-row">
+      <button class="btn btn-secondary" onclick="closeEditModal()">Ci penso...</button>
+      <button class="btn btn-primary" onclick="confirmAssignWishlist('${itemId}')">Assegna! 🎯</button>
+    </div>
+  </div>`;
+  overlay.classList.add('show');
+}
+
+function confirmAssignWishlist(itemId) {
+  const item = state.wishlist.find(w => w.id === itemId);
+  if (!item) return;
+
+  const targetId = document.getElementById('assignTargetSelect').value;
+  const currentUser = document.getElementById('wishlistAuthorSelect')?.value;
+  const assignee = state.participants.find(p => p.id === targetId);
+  const assigner = state.participants.find(p => p.id === currentUser);
+
+  item.assignedToId = targetId;
+  item.assignedById = currentUser;
+  item.status = 'pending';
+
+  closeEditModal();
+  renderAll();
+
+  const msg = WISHLIST_ASSIGN_MESSAGES[Math.floor(Math.random() * WISHLIST_ASSIGN_MESSAGES.length)];
+  const text = msg.text
+    .replace('{assignee}', assignee ? assignee.name : '???')
+    .replace('{assigner}', assigner ? assigner.name : '???')
+    .replace('{item}', item.text);
+  showFunModal(msg.emoji, msg.title, text);
+}
+
+function respondWishlistItem(itemId, accept) {
+  const item = state.wishlist.find(w => w.id === itemId);
+  if (!item) return;
+
+  const person = state.participants.find(p => p.id === item.assignedToId);
+  const name = person ? person.name : '???';
+
+  if (accept) {
+    item.status = 'accepted';
+    renderAll();
+    spawnConfetti();
+    const msg = WISHLIST_ACCEPT_MESSAGES[Math.floor(Math.random() * WISHLIST_ACCEPT_MESSAGES.length)];
+    showFunModal(msg.emoji, msg.title, msg.text.replace('{name}', name));
+  } else {
+    item.status = 'declined';
+    item.assignedToId = null;
+    item.assignedById = null;
+    renderAll();
+    const msg = WISHLIST_DECLINE_MESSAGES[Math.floor(Math.random() * WISHLIST_DECLINE_MESSAGES.length)];
+    showFunModal(msg.emoji, msg.title, msg.text.replace('{name}', name));
+  }
+}
+
+function removeWishlistItem(itemId) {
+  state.wishlist = state.wishlist.filter(w => w.id !== itemId);
+  renderAll();
+}
+
+// ── Backup Event Handlers ──
+async function createBackup() {
+  const desc = document.getElementById('backupDescInput')?.value?.trim() || '';
+  try {
+    const res = await fetch('/api/backups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description: desc || undefined }),
+    });
+    if (res.ok) {
+      document.getElementById('backupDescInput').value = '';
+      showFunModal('💾', 'BACKUP CREATO!', 'I tuoi dati sono al sicuro! Puoi grigliare tranquillo!', 'Perfetto!');
+      renderBackups();
+    }
+  } catch (e) {
+    showFunModal('😱', 'ERRORE!', 'Non sono riuscito a creare il backup... riprova!', 'OK!');
+  }
+}
+
+async function restoreBackup(backupId) {
+  const overlay = document.getElementById('funModalOverlay');
+  overlay.querySelector('.modal-emoji').textContent = '⚠️';
+  overlay.querySelector('.modal-title').textContent = 'RIPRISTINARE?';
+  overlay.querySelector('.modal-text').textContent = 'Vuoi tornare indietro nel tempo? Lo stato attuale verrà salvato automaticamente come backup.';
+
+  const btn = overlay.querySelector('.modal-btn');
+  btn.textContent = 'SI, RIPRISTINA! 🔄';
+  btn.onclick = async () => {
+    closeFunModal();
+    try {
+      const res = await fetch(`/api/backups/${backupId}/restore`, { method: 'POST' });
+      if (res.ok) {
+        const { version } = await res.json();
+        stateVersion = version;
+        await loadStateFromServer();
+        renderAll();
+        renderChat();
+        renderBackups();
+        showFunModal('🎉', 'RIPRISTINATO!', 'Viaggio nel tempo completato! Tutto come prima!', 'Grazie!');
+      }
+    } catch (e) {
+      showFunModal('😱', 'ERRORE!', 'Ripristino fallito... riprova!', 'OK!');
+    }
+  };
+
+  // Add cancel button
+  const existingCancel = overlay.querySelector('.modal-extra-btn');
+  if (existingCancel) existingCancel.remove();
+  const cancel = document.createElement('button');
+  cancel.className = 'btn btn-secondary modal-extra-btn';
+  cancel.textContent = 'No, annulla!';
+  cancel.style.marginRight = '0.5rem';
+  cancel.onclick = closeFunModal;
+  btn.parentNode.insertBefore(cancel, btn);
+
+  overlay.classList.add('show');
+}
+
+async function deleteBackup(backupId) {
+  try {
+    await fetch(`/api/backups/${backupId}`, { method: 'DELETE' });
+    renderBackups();
+  } catch (e) { /* ignore */ }
 }
 
 // ── Fun settlement celebration ──
@@ -987,6 +1386,8 @@ function switchTab(tabName) {
   if (tabName === 'chat') renderChat();
   if (tabName === 'saldi') renderBalances();
   if (tabName === 'regola') renderSettlements();
+  if (tabName === 'wishlist') renderWishlist();
+  if (tabName === 'persone') renderBackups();
 }
 
 function switchBalanceView(view) {
@@ -998,25 +1399,37 @@ function switchBalanceView(view) {
 
 // ── Reset ──
 function resetAll() {
-  showFunModal('⚠️', 'SICURO/A?', 'Vuoi cancellare TUTTO e ricominciare da capo?', 'SI, RESET! 💥');
-  // Override modal button to do the reset
-  const btn = document.querySelector('#funModalOverlay .modal-btn');
-  const originalClick = btn.onclick;
-  btn.onclick = () => {
-    localStorage.removeItem('grigliata_state');
+  const overlay = document.getElementById('funModalOverlay');
+  overlay.querySelector('.modal-emoji').textContent = '⚠️';
+  overlay.querySelector('.modal-title').textContent = 'SICURO/A?';
+  overlay.querySelector('.modal-text').textContent = 'Vuoi cancellare TUTTO e ricominciare da capo? (Un backup automatico verrà creato)';
+
+  const btn = overlay.querySelector('.modal-btn');
+  btn.textContent = 'SI, RESET! 💥';
+  btn.onclick = async () => {
+    // Auto-backup before reset
+    await fetch('/api/backups', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description: 'Auto-backup prima del reset' }),
+    });
     state = JSON.parse(JSON.stringify(DEFAULT_STATE));
     closeFunModal();
     renderAll();
     renderChat();
-    showFunModal('🔄', 'RESET!', 'Tutto azzerato! Si ricomincia!', 'Via! 🍖');
+    showFunModal('🔄', 'RESET!', 'Tutto azzerato! Si ricomincia! (Il backup è stato salvato)', 'Via! 🍖');
   };
-  // Add cancel button
+
+  const existingCancel = overlay.querySelector('.modal-extra-btn');
+  if (existingCancel) existingCancel.remove();
   const cancel = document.createElement('button');
-  cancel.className = 'btn btn-secondary';
+  cancel.className = 'btn btn-secondary modal-extra-btn';
   cancel.textContent = 'No, aspetta!';
   cancel.style.marginRight = '0.5rem';
-  cancel.onclick = () => { closeFunModal(); };
+  cancel.onclick = closeFunModal;
   btn.parentNode.insertBefore(cancel, btn);
+
+  overlay.classList.add('show');
 }
 
 // ── Utility ──
@@ -1027,7 +1440,10 @@ function escapeHtml(str) {
 }
 
 // ── Init ──
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+  // Load state from server
+  await loadStateFromServer();
+
   // Tab clicks
   document.querySelectorAll('.app-tab').forEach(tab => {
     tab.addEventListener('click', () => switchTab(tab.dataset.tab));
@@ -1068,6 +1484,11 @@ document.addEventListener('DOMContentLoaded', () => {
     if (e.key === 'Enter') { e.preventDefault(); addExpense(); }
   });
 
+  // Wishlist enter key
+  document.getElementById('wishlistInput')?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); addWishlistItem(); }
+  });
+
   // Start fun
   startFunnyQuotes();
   spawnFloatingParticles();
@@ -1076,4 +1497,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Periodic roast check
   setInterval(checkForRoasts, 45000);
+
+  // Poll for changes from other devices every 5 seconds
+  setInterval(pollForChanges, 5000);
 });
