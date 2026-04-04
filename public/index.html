@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <title>grigliata</title>
+  <title>La Grigliata 🔥</title>
+  <link rel="stylesheet" href="/css/app.css">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -235,10 +236,167 @@
 </head>
 <body>
 
-  <div class="hero" id="heroSection">
-    <h1>grigliata</h1>
-    <p>Describe what this app should do</p>
+  <div class="app-wrap">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="fire-row">🔥🍖🔥</div>
+      <h1>La Grigliata</h1>
+      <p class="subtitle" id="funnyQuote">Chi paga oggi?</p>
+    </header>
+
+    <!-- Tab Navigation -->
+    <nav class="app-tabs">
+      <button class="app-tab active" data-tab="spese">🍖 Spese</button>
+      <button class="app-tab" data-tab="saldi">💰 Saldi</button>
+      <button class="app-tab" data-tab="regola">🤝 Chi paga chi</button>
+      <button class="app-tab" data-tab="chat">💬 Chat</button>
+      <button class="app-tab" data-tab="persone">👥 Gruppo</button>
+    </nav>
+
+    <!-- ═══ TAB: SPESE ═══ -->
+    <div class="app-panel active" id="tab-spese">
+      <!-- Stats -->
+      <div class="stats-row">
+        <div class="stat-card">
+          <div class="stat-value" id="statTotal">€0.00</div>
+          <div class="stat-label">Totale spese</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="statShare">€0.00</div>
+          <div class="stat-label">Quota a testa</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="statCount">0</div>
+          <div class="stat-label">N. spese</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-value" id="statPeople">0</div>
+          <div class="stat-label">Partecipanti</div>
+        </div>
+      </div>
+
+      <!-- Add Expense -->
+      <div class="card add-expense-card">
+        <div class="card-title">➕ Nuova Spesa</div>
+        <div class="expense-form">
+          <select id="expensePersonSelect"></select>
+          <input type="text" id="expenseDescInput" placeholder="Descrizione (es. Carne, Birra...)">
+          <input type="number" id="expenseAmountInput" placeholder="€" step="0.01" min="0">
+          <button class="btn btn-primary" onclick="addExpense()">Aggiungi 🍖</button>
+        </div>
+      </div>
+
+      <!-- Expense List by Person -->
+      <div id="expensesList"></div>
+    </div>
+
+    <!-- ═══ TAB: SALDI ═══ -->
+    <div class="app-panel" id="tab-saldi">
+      <div id="balancesPanel">
+        <div class="view-toggle">
+          <button class="active" data-view="person" onclick="switchBalanceView('person')">👤 Per persona</button>
+          <button data-view="couple" onclick="switchBalanceView('couple')">💕 Per coppia</button>
+        </div>
+        <div id="balancesContent"></div>
+      </div>
+    </div>
+
+    <!-- ═══ TAB: CHI PAGA CHI ═══ -->
+    <div class="app-panel" id="tab-regola">
+      <div id="settlementsContent"></div>
+    </div>
+
+    <!-- ═══ TAB: CHAT ═══ -->
+    <div class="app-panel" id="tab-chat">
+      <div class="card chat-container">
+        <div class="card-title">💬 Chat della Grigliata</div>
+        <div class="chat-messages" id="chatMessages"></div>
+        <div class="chat-input-row">
+          <select id="chatAuthorSelect"></select>
+          <input type="text" id="chatInput" placeholder="Scrivi un messaggio...">
+          <button class="btn btn-primary btn-sm" onclick="sendChatMessage()">Invia</button>
+        </div>
+      </div>
+
+      <!-- Shopping List -->
+      <div class="card" style="margin-top:0.5rem;">
+        <div class="card-title">🛒 Lista della Spesa</div>
+        <div id="shoppingListContent"></div>
+        <div class="chat-input-row" style="border-top:1px solid rgba(139,69,19,0.1); padding-top:0.5rem; margin-top:0.5rem;">
+          <input type="text" id="shoppingInput" placeholder="Aggiungi alla lista..." style="flex:1;">
+          <button class="btn btn-primary btn-sm" onclick="addShoppingItem()">+ Aggiungi</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ═══ TAB: GRUPPO ═══ -->
+    <div class="app-panel" id="tab-persone">
+      <div class="card">
+        <div class="card-title">➕ Aggiungi Partecipante</div>
+        <div class="add-person-form">
+          <input type="text" id="newPersonName" placeholder="Nome">
+          <select id="couplePartnerSelect">
+            <option value="">Nessuno (singolo)</option>
+          </select>
+          <button class="btn btn-primary" onclick="addPerson()">Aggiungi 🎉</button>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:0.5rem; margin-bottom:0.8rem;">
+        <button class="btn btn-secondary" onclick="makeCouple()" style="flex:1;">💕 Crea Coppia</button>
+        <button class="btn btn-danger" onclick="resetAll()" style="flex:1;">🔄 Reset Tutto</button>
+      </div>
+
+      <div id="participantsList"></div>
+    </div>
   </div>
+
+  <!-- Fun Modal -->
+  <div class="fun-modal-overlay" id="funModalOverlay">
+    <div class="fun-modal">
+      <div class="modal-emoji">🔥</div>
+      <div class="modal-title">Titolo</div>
+      <div class="modal-text">Testo</div>
+      <button class="btn btn-primary modal-btn" onclick="closeFunModal()">OK! 😂</button>
+    </div>
+  </div>
+
+  <!-- Emoji Picker -->
+  <div class="emoji-picker-overlay" id="emojiPickerOverlay">
+    <div class="emoji-picker">
+      <h3>Scegli un avatar!</h3>
+      <div class="emoji-grid" id="emojiGrid"></div>
+    </div>
+  </div>
+
+  <!-- Edit Modal -->
+  <div class="edit-modal-overlay" id="editModalOverlay">
+    <div class="edit-modal">
+      <h3 id="editModalTitle">Modifica</h3>
+    </div>
+  </div>
+
+  <!-- Populate Emoji Grid -->
+  <script>
+    const emojiList = [
+      '👸','🧔','🦁','🦋','🐧','🌹','🤖','🦊','🦄','🐔','🐷','🐮','🐑','🦆',
+      '🐙','🦑','🦀','🐊','🦖','🦕','🐢','🐸','🦩','🦜','🦚','🐝','🐛','🐌',
+      '🐞','🐼','🐨','🐯','🐻','🦝','🦥','🦧','🐒','🦃','🐉','🐲','🤡','🤠',
+      '🧙','🧛','🧜','🧚','🧞','🥷','🦸','🦹','🧟','👻','👽','🤯','🥶','🥳',
+      '😎','🤓','🧐','🤪','🥸','💀','🎃','🤑','🫣','🤩','🥹','😈',
+      '💕','🔥','⚡','🌈','💫','🎪','🎭','🎯','🍕','🎸','🌺','🍖','🦴','🥩',
+    ];
+    const grid = document.getElementById('emojiGrid');
+    emojiList.forEach(e => {
+      const btn = document.createElement('button');
+      btn.className = 'emoji-option';
+      btn.textContent = e;
+      btn.onclick = () => selectEmoji(e);
+      grid.appendChild(btn);
+    });
+  </script>
+
+  <script src="/js/app.js"></script>
 
   <div class="builder-bar" id="builderBar">
     <!-- Expandable panel -->
