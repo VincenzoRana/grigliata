@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>grigliata</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0c1018;
+      --surface: #151d28;
+      --elevated: #1c2836;
+      --border: rgba(255,255,255,0.08);
+      --text: #dfe8f0;
+      --muted: #7a8a9c;
+      --accent: #50adf0;
+      --accent-surface: rgba(80,173,240,0.12);
+      --danger: #f06060;
+      --ok: #3de8b0;
+      --radius: 12px;
+      --bar-height: 62px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      padding-bottom: 66px;
+    }
+
+    /* ── Hero ── */
+    .hero {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      min-height: 70dvh;
+      padding: 2rem;
+      background:
+        radial-gradient(ellipse at 30% 20%, rgba(80,173,240,0.08) 0%, transparent 60%),
+        radial-gradient(ellipse at 70% 80%, rgba(61,232,176,0.06) 0%, transparent 60%),
+        radial-gradient(ellipse at 50% 50%, rgba(176,136,240,0.04) 0%, transparent 70%);
+    }
+
+    .hero h1 {
+      font-size: clamp(2rem, 6vw, 4rem);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      background: linear-gradient(135deg, var(--accent), var(--ok));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .hero p { margin-top: 0.75rem; color: var(--muted); }
+
+    /* ── Builder bar ── */
+    .builder-bar {
+      position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
+    }
+    .builder-input-row {
+      display: flex; gap: 8px; align-items: center;
+      padding: 10px 12px;
+    }
+    .builder-panel-toggle {
+      width: 36px; height: 36px; border-radius: 50%;
+      border: 1px solid var(--border); background: transparent;
+      color: var(--muted); cursor: pointer;
+      display: grid; place-items: center;
+      flex-shrink: 0; transition: all 0.2s; position: relative;
+    }
+    .builder-panel-toggle svg { transition: transform 0.25s; }
+    .builder-panel-toggle:hover { color: var(--accent); border-color: rgba(80,173,240,0.4); }
+    .builder-panel-toggle.active { color: var(--accent); background: var(--accent-surface); border-color: rgba(80,173,240,0.4); }
+    .builder-panel-toggle .badge { position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); display: none; }
+    .builder-panel-toggle .badge.running { display: block; background: var(--ok); animation: pulse-badge 1.2s ease infinite; }
+    @keyframes pulse-badge { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
+    .builder-input-wrap {
+      flex: 1; display: flex; align-items: center; gap: 6px;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 22px; padding: 0 6px 0 14px;
+      transition: border-color 0.15s, box-shadow 0.15s;
+      min-height: 44px;
+    }
+    .builder-input-wrap:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(80,173,240,0.12); }
+    .builder-input { flex: 1; height: 40px; padding: 0; border: none; background: none; color: var(--text); font-size: 16px; font-family: inherit; outline: none; min-width: 0; }
+    .builder-model-select { height: 28px; padding: 0 6px; margin-right: 2px; border-radius: 14px; border: 1px solid var(--border); background: var(--elevated); color: var(--muted); font-size: 10px; font-weight: 700; cursor: pointer; outline: none; flex-shrink: 0; }
+    .builder-send-btn { width: 34px; height: 34px; border-radius: 50%; border: none; background: var(--accent); color: #fff; cursor: pointer; display: grid; place-items: center; flex-shrink: 0; transition: opacity 0.15s, transform 0.15s; }
+    .builder-send-btn:hover { transform: scale(1.08); }
+    .builder-send-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
+    .builder-stop-btn { width: 34px; height: 34px; border-radius: 50%; border: none; background: var(--danger); color: #fff; cursor: pointer; display: grid; place-items: center; flex-shrink: 0; display: none; }
+
+    /* ── Expandable panel ── */
+    .builder-panel {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s cubic-bezier(0.4,0,0.2,1);
+      background: var(--surface);
+      border-bottom: 1px solid transparent;
+      display: flex;
+      flex-direction: column;
+    }
+    .builder-panel.open {
+      max-height: 60dvh;
+      border-bottom-color: var(--border);
+    }
+
+    .builder-panel-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px 6px;
+      flex-shrink: 0;
+    }
+    .builder-panel-header h3 {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.01em;
+    }
+
+    .builder-panel-tabs {
+      display: flex;
+      gap: 2px;
+      background: var(--bg);
+      border-radius: 8px;
+      padding: 2px;
+    }
+    .panel-tab {
+      padding: 4px 12px;
+      border-radius: 6px;
+      border: none;
+      background: none;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+    }
+    .panel-tab.active { background: var(--elevated); color: var(--text); }
+
+    .builder-panel-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 6px 14px 12px;
+      min-height: 0;
+    }
+
+    /* ── Status bar ── */
+    .builder-status-bar {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 14px;
+      font-size: 12px;
+      color: var(--muted);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .builder-status-bar.visible { display: flex; }
+    .builder-status-bar .spinner {
+      width: 12px; height: 12px;
+      border: 2px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Chat tab ── */
+    .builder-chat {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .chat-msg {
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      line-height: 1.5;
+      max-width: 88%;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .chat-msg.user {
+      align-self: flex-end;
+      background: var(--accent-surface);
+      color: var(--accent);
+      border: 1px solid rgba(80,173,240,0.2);
+    }
+    .chat-msg.assistant {
+      align-self: flex-start;
+      background: rgba(255,255,255,0.04);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .chat-msg.system {
+      align-self: center;
+      background: rgba(61,232,176,0.08);
+      color: var(--ok);
+      font-size: 11px;
+      padding: 4px 12px;
+    }
+    .chat-msg.error {
+      align-self: center;
+      background: rgba(240,96,96,0.08);
+      color: var(--danger);
+      font-size: 11px;
+      padding: 4px 12px;
+    }
+
+    /* ── Log tab ── */
+    .builder-log {
+      font-family: "SF Mono", "Fira Code", monospace;
+      font-size: 10px;
+      line-height: 1.6;
+      color: var(--muted);
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .builder-log:empty::after {
+      content: 'No output yet.';
+      color: rgba(255,255,255,0.15);
+    }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+  </style>
+</head>
+<body>
+
+  <div class="hero" id="heroSection">
+    <h1>grigliata</h1>
+    <p>Describe what this app should do</p>
+  </div>
+
+  <div class="builder-bar" id="builderBar">
+    <!-- Expandable panel -->
+    <div class="builder-panel" id="builderPanel">
+      <div class="builder-panel-header">
+        <h3>Builder</h3>
+        <div class="builder-panel-tabs">
+          <button class="panel-tab active" data-panel-tab="chat">Chat</button>
+          <button class="panel-tab" data-panel-tab="log">Log</button>
+        </div>
+      </div>
+      <div class="builder-status-bar" id="builderStatus">
+        <span class="spinner"></span>
+        <span id="builderStatusText">Working...</span>
+      </div>
+      <div class="builder-panel-body" id="panelBody">
+        <div class="tab-content active" data-panel-content="chat">
+          <div class="builder-chat" id="builderChat"></div>
+        </div>
+        <div class="tab-content" data-panel-content="log">
+          <div class="builder-log" id="builderLog"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Always-visible input bar -->
+    <div class="builder-input-row">
+      <button class="builder-panel-toggle" id="panelToggle" title="Toggle builder panel">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l5 5 5-5"/></svg>
+        <span class="badge" id="toggleBadge"></span>
+      </button>
+      <div class="builder-input-wrap">
+        <input class="builder-input" id="builderInput" type="text" placeholder="What should this app do?">
+        <select class="builder-model-select" id="modelSelect">
+          <option value="claude">Claude</option>
+          <option value="codex">Codex</option>
+        </select>
+      </div>
+      <button class="builder-send-btn" id="sendBtn" title="Send">
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2.5 1.8L14.3 7.5c.5.2.5.8 0 1L2.5 14.2c-.5.2-1-.1-1-.6V9.4L9 8 1.5 6.6V2.4c0-.5.5-.8 1-.6z"/></svg>
+      </button>
+      <button class="builder-stop-btn" id="stopBtn" title="Stop">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><rect x="1" y="1" width="10" height="10" rx="2"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <script>
+    const APP_NAME = 'grigliata';
+    const API_BASE = '';
+    const $ = id => document.getElementById(id);
+    const builderInput = $('builderInput');
+    const sendBtn = $('sendBtn');
+    const stopBtn = $('stopBtn');
+    const builderLog = $('builderLog');
+    const builderChat = $('builderChat');
+    const builderStatus = $('builderStatus');
+    const builderStatusText = $('builderStatusText');
+    const modelSelect = $('modelSelect');
+    const builderPanel = $('builderPanel');
+    const panelToggle = $('panelToggle');
+    const toggleBadge = $('toggleBadge');
+    const panelBody = $('panelBody');
+    let abortController = null;
+    let conversationContext = [];
+    let panelOpen = false;
+
+    // ── Panel toggle ──
+    panelToggle.addEventListener('click', () => {
+      panelOpen = !panelOpen;
+      builderPanel.classList.toggle('open', panelOpen);
+      panelToggle.classList.toggle('active', panelOpen);
+      panelToggle.querySelector('svg').style.transform = panelOpen ? 'rotate(180deg)' : '';
+      if (panelOpen) {
+        builderChat.scrollTop = builderChat.scrollHeight;
+        panelBody.scrollTop = panelBody.scrollHeight;
+      }
+    });
+
+    // ── Panel tabs ──
+    document.querySelectorAll('.panel-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        document.querySelector(`[data-panel-content="${tab.dataset.panelTab}"]`).classList.add('active');
+      });
+    });
+
+    // ── Send on Enter ──
+    builderInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); sendCommand(); }
+    });
+    sendBtn.addEventListener('click', sendCommand);
+    stopBtn.addEventListener('click', stopCommand);
+
+    function addChatMsg(text, role) {
+      const div = document.createElement('div');
+      div.className = `chat-msg ${role}`;
+      div.textContent = text;
+      builderChat.appendChild(div);
+      builderChat.scrollTop = builderChat.scrollHeight;
+      panelBody.scrollTop = panelBody.scrollHeight;
+    }
+
+    function setRunningUI(on) {
+      sendBtn.style.display = on ? 'none' : 'grid';
+      stopBtn.style.display = on ? 'grid' : 'none';
+      builderInput.disabled = on;
+      builderStatus.classList.toggle('visible', on);
+      toggleBadge.classList.toggle('running', on);
+      if (!on) { builderInput.focus(); }
+    }
+
+    async function sendCommand() {
+      const prompt = builderInput.value.trim();
+      if (!prompt) return;
+
+      addChatMsg(prompt, 'user');
+      builderInput.value = '';
+
+      // Auto-open panel
+      if (!panelOpen) panelToggle.click();
+
+      conversationContext.push({ role: 'user', text: prompt });
+      let fullPrompt = prompt;
+      if (conversationContext.length > 2) {
+        const prev = conversationContext.slice(-6, -1);
+        fullPrompt = `Previous conversation:\n${prev.map(m => `[${m.role}]: ${m.text}`).join('\n')}\n\nNew request: ${prompt}`;
+      }
+
+      setRunningUI(true);
+      builderStatusText.textContent = 'Working...';
+      builderLog.textContent = '';
+      let fullOutput = '';
+
+      try {
+        const res = await fetch(`${API_BASE}/api/builder/command`, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ app: APP_NAME, prompt: fullPrompt, model: modelSelect.value }),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || 'Failed to start command');
+        }
+
+        fullOutput = await streamOutput();
+      } catch (err) {
+        if (err.name !== 'AbortError') {
+          addChatMsg('Error: ' + err.message, 'error');
+        }
+      }
+      setRunningUI(false);
+    }
+
+    async function streamOutput() {
+      abortController = new AbortController();
+      const streamRes = await fetch(`${API_BASE}/api/builder/stream?app=${encodeURIComponent(APP_NAME)}`, {
+        credentials: 'same-origin',
+        signal: abortController.signal,
+      });
+
+      const reader = streamRes.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let fullOutput = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.type === 'output' || data.type === 'buffer') {
+              fullOutput += data.text;
+              builderLog.textContent += data.text;
+              builderLog.scrollTop = builderLog.scrollHeight;
+            }
+            if (data.type === 'done') {
+              const response = fullOutput.split('\n').filter(l => !l.startsWith('[Builder]')).join('\n').trim();
+              if (response) {
+                conversationContext.push({ role: 'assistant', text: response });
+                addChatMsg(response, 'assistant');
+              }
+              if (data.exitCode === 0) {
+                addChatMsg('Changes applied. Reloading...', 'system');
+                builderStatusText.textContent = 'Reloading...';
+                await waitForHealth();
+                location.reload();
+              } else {
+                addChatMsg('Command failed (exit ' + data.exitCode + ')', 'error');
+              }
+              return fullOutput;
+            }
+          } catch {}
+        }
+      }
+      return fullOutput;
+    }
+
+    async function stopCommand() {
+      try {
+        abortController?.abort();
+        await fetch(`${API_BASE}/api/builder/stop`, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ app: APP_NAME }),
+        });
+        addChatMsg('Stopped.', 'system');
+      } catch {}
+      setRunningUI(false);
+    }
+
+    async function waitForHealth() {
+      for (let i = 0; i < 20; i++) {
+        await new Promise(r => setTimeout(r, 1500));
+        try { if ((await fetch('/health', { cache: 'no-store' })).ok) return; } catch {}
+      }
+    }
+
+    // ── Load history ──
+    async function loadHistory() {
+      try {
+        const res = await fetch(`${API_BASE}/api/builder/history?app=${encodeURIComponent(APP_NAME)}`, { credentials: 'same-origin' });
+        if (!res.ok) return;
+        const { history = [] } = await res.json();
+        for (const item of history) {
+          addChatMsg(item.prompt, 'user');
+          const response = (item.output || '').split('\n').filter(l => !l.startsWith('[Builder]')).join('\n').trim();
+          if (response) addChatMsg(response, 'assistant');
+          addChatMsg(item.status === 'completed' ? 'Changes applied.' : 'Command failed.', item.status === 'completed' ? 'system' : 'error');
+          conversationContext.push({ role: 'user', text: item.prompt });
+          if (response) conversationContext.push({ role: 'assistant', text: response });
+        }
+      } catch {}
+    }
+
+    // ── Check running command on load ──
+    async function checkRunningCommand() {
+      try {
+        const res = await fetch(`${API_BASE}/api/builder/list`, { credentials: 'same-origin' });
+        if (!res.ok) return;
+        const { apps = [] } = await res.json();
+        const app = apps.find(a => a.name === APP_NAME);
+        if (app?.commandStatus === 'running') {
+          setRunningUI(true);
+          builderStatusText.textContent = 'Working...';
+          if (!panelOpen) panelToggle.click();
+          try { await streamOutput(); } catch {}
+          setRunningUI(false);
+        }
+      } catch {}
+    }
+
+    (async () => {
+      await loadHistory();
+      await checkRunningCommand();
+    })();
+  </script>
+</body>
+</html>
