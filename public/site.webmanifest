@@ -1,0 +1,19 @@
+{
+  "name": "La Grigliata",
+  "short_name": "Grigliata",
+  "description": "Spese, conti, organizzazione e giochi per la grigliata.",
+  "lang": "it",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#fff7ef",
+  "theme_color": "#d85b28",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

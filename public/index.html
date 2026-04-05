@@ -1,476 +1,483 @@
 <!doctype html>
-<html lang="en">
+<html lang="it">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <title>La Grigliata 🔥</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="App per organizzare la grigliata: spese, regolamento conti, wishlist, chat, lista della spesa e mini giochi.">
+  <meta name="theme-color" content="#fff7ef">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="format-detection" content="telephone=no">
+  <title>La Grigliata</title>
+  <link rel="manifest" href="/site.webmanifest">
+  <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/css/app.css">
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    :root {
-      --bg: #0c1018;
-      --surface: #151d28;
-      --elevated: #1c2836;
-      --border: rgba(255,255,255,0.08);
-      --text: #dfe8f0;
-      --muted: #7a8a9c;
-      --accent: #50adf0;
-      --accent-surface: rgba(80,173,240,0.12);
-      --danger: #f06060;
-      --ok: #3de8b0;
-      --radius: 12px;
-      --bar-height: 62px;
-    }
-
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      min-height: 100dvh;
-      padding-bottom: 66px;
-    }
-
-    /* ── Hero ── */
-    .hero {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      min-height: 70dvh;
-      padding: 2rem;
-      background:
-        radial-gradient(ellipse at 30% 20%, rgba(80,173,240,0.08) 0%, transparent 60%),
-        radial-gradient(ellipse at 70% 80%, rgba(61,232,176,0.06) 0%, transparent 60%),
-        radial-gradient(ellipse at 50% 50%, rgba(176,136,240,0.04) 0%, transparent 70%);
-    }
-
-    .hero h1 {
-      font-size: clamp(2rem, 6vw, 4rem);
-      font-weight: 700;
-      letter-spacing: -0.03em;
-      background: linear-gradient(135deg, var(--accent), var(--ok));
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
-    }
-    .hero p { margin-top: 0.75rem; color: var(--muted); }
-
-    /* ── Builder bar ── */
-    .builder-bar {
-      position: fixed; bottom: 0; left: 0; right: 0; z-index: 100;
-      background: var(--surface);
-      border-top: 1px solid var(--border);
-      box-shadow: 0 -4px 20px rgba(0,0,0,0.4);
-    }
-    .builder-input-row {
-      display: flex; gap: 8px; align-items: center;
-      padding: 10px 12px;
-    }
-    .builder-panel-toggle {
-      width: 36px; height: 36px; border-radius: 50%;
-      border: 1px solid var(--border); background: transparent;
-      color: var(--muted); cursor: pointer;
-      display: grid; place-items: center;
-      flex-shrink: 0; transition: all 0.2s; position: relative;
-    }
-    .builder-panel-toggle svg { transition: transform 0.25s; }
-    .builder-panel-toggle:hover { color: var(--accent); border-color: rgba(80,173,240,0.4); }
-    .builder-panel-toggle.active { color: var(--accent); background: var(--accent-surface); border-color: rgba(80,173,240,0.4); }
-    .builder-panel-toggle .badge { position: absolute; top: -2px; right: -2px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); display: none; }
-    .builder-panel-toggle .badge.running { display: block; background: var(--ok); animation: pulse-badge 1.2s ease infinite; }
-    @keyframes pulse-badge { 0%,100% { opacity:1; } 50% { opacity:0.3; } }
-    .builder-input-wrap {
-      flex: 1; display: flex; align-items: center; gap: 6px;
-      background: var(--bg); border: 1px solid var(--border);
-      border-radius: 22px; padding: 0 6px 0 14px;
-      transition: border-color 0.15s, box-shadow 0.15s;
-      min-height: 44px;
-    }
-    .builder-input-wrap:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(80,173,240,0.12); }
-    .builder-input { flex: 1; height: 40px; padding: 0; border: none; background: none; color: var(--text); font-size: 16px; font-family: inherit; outline: none; min-width: 0; }
-    .builder-model-select { height: 28px; padding: 0 6px; margin-right: 2px; border-radius: 14px; border: 1px solid var(--border); background: var(--elevated); color: var(--muted); font-size: 10px; font-weight: 700; cursor: pointer; outline: none; flex-shrink: 0; }
-    .builder-send-btn { width: 34px; height: 34px; border-radius: 50%; border: none; background: var(--accent); color: #fff; cursor: pointer; display: grid; place-items: center; flex-shrink: 0; transition: opacity 0.15s, transform 0.15s; }
-    .builder-send-btn:hover { transform: scale(1.08); }
-    .builder-send-btn:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
-    .builder-stop-btn { width: 34px; height: 34px; border-radius: 50%; border: none; background: var(--danger); color: #fff; cursor: pointer; display: grid; place-items: center; flex-shrink: 0; display: none; }
-
-    /* ── Expandable panel ── */
-    .builder-panel {
-      max-height: 0;
-      overflow: hidden;
-      transition: max-height 0.3s cubic-bezier(0.4,0,0.2,1);
-      background: var(--surface);
-      border-bottom: 1px solid transparent;
-      display: flex;
-      flex-direction: column;
-    }
-    .builder-panel.open {
-      max-height: 60dvh;
-      border-bottom-color: var(--border);
-    }
-
-    .builder-panel-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 10px 14px 6px;
-      flex-shrink: 0;
-    }
-    .builder-panel-header h3 {
-      font-size: 13px;
-      font-weight: 700;
-      color: var(--text);
-      letter-spacing: -0.01em;
-    }
-
-    .builder-panel-tabs {
-      display: flex;
-      gap: 2px;
-      background: var(--bg);
-      border-radius: 8px;
-      padding: 2px;
-    }
-    .panel-tab {
-      padding: 4px 12px;
-      border-radius: 6px;
-      border: none;
-      background: none;
-      color: var(--muted);
-      font-size: 11px;
-      font-weight: 600;
-      cursor: pointer;
-      font-family: inherit;
-    }
-    .panel-tab.active { background: var(--elevated); color: var(--text); }
-
-    .builder-panel-body {
-      flex: 1;
-      overflow-y: auto;
-      padding: 6px 14px 12px;
-      min-height: 0;
-    }
-
-    /* ── Status bar ── */
-    .builder-status-bar {
-      display: none;
-      align-items: center;
-      gap: 8px;
-      padding: 6px 14px;
-      font-size: 12px;
-      color: var(--muted);
-      border-bottom: 1px solid var(--border);
-      flex-shrink: 0;
-    }
-    .builder-status-bar.visible { display: flex; }
-    .builder-status-bar .spinner {
-      width: 12px; height: 12px;
-      border: 2px solid var(--border);
-      border-top-color: var(--accent);
-      border-radius: 50%;
-      animation: spin 0.8s linear infinite;
-    }
-    @keyframes spin { to { transform: rotate(360deg); } }
-
-    /* ── Chat tab ── */
-    .builder-chat {
-      display: flex;
-      flex-direction: column;
-      gap: 6px;
-    }
-
-    .chat-msg {
-      padding: 8px 12px;
-      border-radius: 10px;
-      font-size: 13px;
-      line-height: 1.5;
-      max-width: 88%;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
-    .chat-msg.user {
-      align-self: flex-end;
-      background: var(--accent-surface);
-      color: var(--accent);
-      border: 1px solid rgba(80,173,240,0.2);
-    }
-    .chat-msg.assistant {
-      align-self: flex-start;
-      background: rgba(255,255,255,0.04);
-      color: var(--text);
-      border: 1px solid var(--border);
-    }
-    .chat-msg.system {
-      align-self: center;
-      background: rgba(61,232,176,0.08);
-      color: var(--ok);
-      font-size: 11px;
-      padding: 4px 12px;
-    }
-    .chat-msg.error {
-      align-self: center;
-      background: rgba(240,96,96,0.08);
-      color: var(--danger);
-      font-size: 11px;
-      padding: 4px 12px;
-    }
-
-    /* ── Log tab ── */
-    .builder-log {
-      font-family: "SF Mono", "Fira Code", monospace;
-      font-size: 10px;
-      line-height: 1.6;
-      color: var(--muted);
-      white-space: pre-wrap;
-      word-break: break-all;
-    }
-    .builder-log:empty::after {
-      content: 'No output yet.';
-      color: rgba(255,255,255,0.15);
-    }
-
-    .tab-content { display: none; }
-    .tab-content.active { display: block; }
-  </style>
 </head>
 <body>
+  <a class="skip-link" href="#mainContent">Salta al contenuto</a>
+  <div class="app-shell">
+    <header class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Conti chiari, braci accese</p>
+        <h1>La Grigliata</h1>
+        <p class="hero-lede">
+          Un'unica app per segnare spese, regolare i conti, organizzare la serata
+          e perdere qualche minuto con mini giochi a tema barbecue.
+        </p>
+      </div>
 
-  <div class="app-wrap">
-    <!-- Header -->
-    <header class="app-header">
-      <div class="fire-row">🔥🍖🔥</div>
-      <h1>La Grigliata</h1>
-      <p class="subtitle" id="funnyQuote">Chi paga oggi?</p>
+      <div class="hero-stats" id="heroStats"></div>
+
+      <div class="card identity-card">
+        <div class="card-head">
+          <div>
+            <p class="eyebrow">Profilo attivo</p>
+            <h2>Tu chi sei?</h2>
+          </div>
+          <div class="active-pill" id="activeIdentityPill">Nessun profilo</div>
+        </div>
+        <p class="card-copy">
+          Il profilo attivo viene usato per commenti, wishlist, chat, lista della spesa e mini giochi su questo dispositivo.
+        </p>
+        <div class="identity-switcher" id="identitySwitcher"></div>
+      </div>
     </header>
 
-    <!-- Tab Navigation -->
-    <nav class="app-tabs">
-      <button class="app-tab active" data-tab="spese">🍖 Spese</button>
-      <button class="app-tab" data-tab="saldi">💰 Saldi</button>
-      <button class="app-tab" data-tab="regola">🤝 Chi paga chi</button>
-      <button class="app-tab" data-tab="wishlist">🎁 Wishlist</button>
-      <button class="app-tab" data-tab="chat">💬 Chat</button>
-      <button class="app-tab" data-tab="persone">👥 Gruppo</button>
+    <nav class="primary-nav" aria-label="Sezioni principali" role="tablist">
+      <button class="primary-tab active" data-tab="spese" type="button" role="tab" id="tab-trigger-spese" aria-controls="tab-spese" aria-selected="true">Spese</button>
+      <button class="primary-tab" data-tab="regolamento" type="button" role="tab" id="tab-trigger-regolamento" aria-controls="tab-regolamento" aria-selected="false" tabindex="-1">Regolamento</button>
+      <button class="primary-tab" data-tab="organizzazione" type="button" role="tab" id="tab-trigger-organizzazione" aria-controls="tab-organizzazione" aria-selected="false" tabindex="-1">Organizzazione</button>
     </nav>
 
-    <!-- ═══ TAB: SPESE ═══ -->
-    <div class="app-panel active" id="tab-spese">
-      <!-- Stats -->
-      <div class="stats-row">
-        <div class="stat-card">
-          <div class="stat-value" id="statTotal">€0.00</div>
-          <div class="stat-label">Totale spese</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value" id="statShare">€0.00</div>
-          <div class="stat-label">Quota a testa</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value" id="statCount">0</div>
-          <div class="stat-label">N. spese</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-value" id="statPeople">0</div>
-          <div class="stat-label">Partecipanti</div>
-        </div>
-      </div>
+    <main class="main-layout" id="mainContent">
+      <section class="tab-panel active" id="tab-spese" role="tabpanel" aria-labelledby="tab-trigger-spese">
+        <div class="content-grid">
+          <div class="card card-accent">
+            <div class="card-head">
+              <div>
+                <p class="eyebrow">Operativo</p>
+                <h2>Nuova spesa</h2>
+              </div>
+              <div class="card-meta" id="expenseActionHint">Vai rapido</div>
+            </div>
 
-      <!-- Add Expense -->
-      <div class="card add-expense-card">
-        <div class="card-title">➕ Nuova Spesa</div>
-        <div class="expense-form">
-          <select id="expensePersonSelect"></select>
-          <input type="text" id="expenseDescInput" placeholder="Descrizione (es. Carne, Birra...)">
-          <input type="number" id="expenseAmountInput" placeholder="€" step="0.01" min="0">
-          <button class="btn btn-primary" onclick="addExpense()">Aggiungi 🍖</button>
+            <form class="stack-form expense-form" onsubmit="event.preventDefault(); addExpense();">
+              <div class="field-grid">
+                <label class="field">
+                  <span>Chi ha anticipato</span>
+                  <select id="expensePersonSelect"></select>
+                </label>
+                <label class="field">
+                  <span>Importo</span>
+                  <input type="number" id="expenseAmountInput" placeholder="0,00" step="0.01" min="0" inputmode="decimal" enterkeyhint="done">
+                </label>
+              </div>
+
+              <label class="field">
+                <span>Descrizione</span>
+                <input type="text" id="expenseDescInput" placeholder="Carne, birre, ghiaccio, carbonella..." autocapitalize="sentences" enterkeyhint="done">
+              </label>
+
+              <label class="field">
+                <span>Commento iniziale opzionale</span>
+                <textarea id="expenseCommentInput" rows="3" placeholder="Es. preso in offerta, serve rimborso veloce, avanzano 2 confezioni..." autocapitalize="sentences"></textarea>
+              </label>
+
+              <div class="form-actions">
+                <button class="btn btn-primary" type="submit">Aggiungi spesa</button>
+                <button class="btn btn-secondary" type="button" onclick="prefillExpenseForActiveUser()">Usa profilo attivo</button>
+              </div>
+            </form>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <p class="eyebrow">Panoramica</p>
+                <h2>Chi sta anticipando di più</h2>
+              </div>
+              <div class="card-meta" id="spendingMeta"></div>
+            </div>
+            <div id="spendingLeaderboard"></div>
+          </div>
         </div>
-      </div>
 
-      <!-- Expense List by Person -->
-      <div id="expensesList"></div>
-    </div>
-
-    <!-- ═══ TAB: SALDI ═══ -->
-    <div class="app-panel" id="tab-saldi">
-      <div id="balancesPanel">
-        <div class="view-toggle">
-          <button class="active" data-view="person" onclick="switchBalanceView('person')">👤 Per persona</button>
-          <button data-view="couple" onclick="switchBalanceView('couple')">💕 Per coppia</button>
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Feed</p>
+              <h2>Spese recenti</h2>
+            </div>
+            <button class="ghost-btn" type="button" onclick="collapseAllExpenseComments()">Chiudi commenti</button>
+          </div>
+          <div id="expensesList"></div>
         </div>
-        <div id="balancesContent"></div>
-      </div>
-    </div>
+      </section>
 
-    <!-- ═══ TAB: CHI PAGA CHI ═══ -->
-    <div class="app-panel" id="tab-regola">
-      <div id="settlementsContent"></div>
-    </div>
+      <section class="tab-panel" id="tab-regolamento" role="tabpanel" aria-labelledby="tab-trigger-regolamento" hidden>
+        <div class="content-grid">
+          <div class="card card-dark">
+            <div class="card-head">
+              <div>
+                <p class="eyebrow">Sintesi</p>
+                <h2>Chi deve pagare chi</h2>
+              </div>
+              <div class="card-meta card-meta-dark" id="settlementsMeta"></div>
+            </div>
 
-    <!-- ═══ TAB: WISHLIST ═══ -->
-    <div class="app-panel" id="tab-wishlist">
-      <div class="card add-expense-card">
-        <div class="card-title">🎁 Cosa vorresti alla grigliata?</div>
-        <div class="wishlist-form">
-          <select id="wishlistAuthorSelect"></select>
-          <input type="text" id="wishlistInput" placeholder="Es: Costine di maiale, Focaccia...">
-          <button class="btn btn-primary" onclick="addWishlistItem()">Aggiungi 🎁</button>
+            <div class="hero-stats compact-stats" id="settlementStats"></div>
+            <div id="settlementsContent"></div>
+
+            <div class="form-actions">
+              <button class="btn btn-light" type="button" onclick="celebrateSettlement()">Festeggia il pareggio</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <p class="eyebrow">Dettaglio</p>
+                <h2>Saldo vivo</h2>
+              </div>
+            </div>
+
+            <div class="segmented" id="balanceViewToggle" role="group" aria-label="Vista saldi">
+              <button class="active" data-view="person" type="button" aria-pressed="true">Per persona</button>
+              <button data-view="unit" type="button" aria-pressed="false">Per coppia / singolo</button>
+            </div>
+
+            <div id="balancesContent"></div>
+          </div>
         </div>
-      </div>
-      <div id="wishlistContent"></div>
-    </div>
+      </section>
 
-    <!-- ═══ TAB: CHAT ═══ -->
-    <div class="app-panel" id="tab-chat">
-      <div class="card chat-container">
-        <div class="card-title">💬 Chat della Grigliata</div>
-        <div class="chat-messages" id="chatMessages"></div>
-        <div class="chat-input-row">
-          <select id="chatAuthorSelect"></select>
-          <input type="text" id="chatInput" placeholder="Scrivi un messaggio...">
-          <button class="btn btn-primary btn-sm" onclick="sendChatMessage()">Invia</button>
+      <section class="tab-panel" id="tab-organizzazione" role="tabpanel" aria-labelledby="tab-trigger-organizzazione" hidden>
+        <nav class="sub-nav" aria-label="Sezioni organizzazione" role="tablist">
+          <button class="sub-tab active" data-org-tab="wishlist" type="button" role="tab" id="org-trigger-wishlist" aria-controls="org-wishlist" aria-selected="true">Wishlist</button>
+          <button class="sub-tab" data-org-tab="lista" type="button" role="tab" id="org-trigger-lista" aria-controls="org-lista" aria-selected="false" tabindex="-1">Lista</button>
+          <button class="sub-tab" data-org-tab="chat" type="button" role="tab" id="org-trigger-chat" aria-controls="org-chat" aria-selected="false" tabindex="-1">Chat</button>
+          <button class="sub-tab" data-org-tab="gruppo" type="button" role="tab" id="org-trigger-gruppo" aria-controls="org-gruppo" aria-selected="false" tabindex="-1">Gruppo</button>
+          <button class="sub-tab" data-org-tab="giochi" type="button" role="tab" id="org-trigger-giochi" aria-controls="org-giochi" aria-selected="false" tabindex="-1">Giochi</button>
+          <button class="sub-tab" data-org-tab="admin" type="button" role="tab" id="org-trigger-admin" aria-controls="org-admin" aria-selected="false" tabindex="-1">Admin</button>
+        </nav>
+
+        <div class="org-panel active" id="org-wishlist" role="tabpanel" aria-labelledby="org-trigger-wishlist">
+          <div class="content-grid">
+            <div class="card card-accent-soft">
+              <div class="card-head">
+                <div>
+                  <p class="eyebrow">Organizzazione</p>
+                  <h2>Cosa serve davvero?</h2>
+                </div>
+                <div class="active-pill" id="wishlistIdentityPill">Richiesta da ...</div>
+              </div>
+
+              <form class="stack-form" onsubmit="event.preventDefault(); addWishlistItem();">
+                <label class="field">
+                  <span>Nuovo desiderio</span>
+                  <input type="text" id="wishlistInput" placeholder="Costine, focaccia, ghiaccio, limoni..." autocapitalize="sentences" enterkeyhint="done">
+                </label>
+                <div class="form-actions">
+                  <button class="btn btn-primary" type="submit">Aggiungi alla wishlist</button>
+                </div>
+              </form>
+            </div>
+
+            <div class="card" id="wishlistProgressWrap"></div>
+          </div>
+
+          <div id="wishlistContent"></div>
         </div>
-      </div>
 
-      <!-- Shopping List -->
-      <div class="card" style="margin-top:0.5rem;">
-        <div class="card-title">🛒 Lista della Spesa</div>
-        <div id="shoppingListContent"></div>
-        <div class="chat-input-row" style="border-top:1px solid rgba(139,69,19,0.1); padding-top:0.5rem; margin-top:0.5rem;">
-          <input type="text" id="shoppingInput" placeholder="Aggiungi alla lista..." style="flex:1;">
-          <button class="btn btn-primary btn-sm" onclick="addShoppingItem()">+ Aggiungi</button>
+        <div class="org-panel" id="org-lista" role="tabpanel" aria-labelledby="org-trigger-lista" hidden>
+          <div class="content-grid">
+            <div class="card">
+              <div class="card-head">
+                <div>
+                  <p class="eyebrow">Operativo</p>
+                  <h2>Lista della spesa</h2>
+                </div>
+                <div class="active-pill" id="shoppingIdentityPill">Aggiungi come ...</div>
+              </div>
+
+              <form class="stack-form" onsubmit="event.preventDefault(); addShoppingItem();">
+                <label class="field">
+                  <span>Nuovo elemento</span>
+                  <input type="text" id="shoppingInput" placeholder="Pane, carbonella, piatti, tovaglioli..." autocapitalize="sentences" enterkeyhint="done">
+                </label>
+                <div class="form-actions">
+                  <button class="btn btn-primary" type="submit">Aggiungi alla lista</button>
+                </div>
+              </form>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <div>
+                  <p class="eyebrow">Stato</p>
+                  <h2>Cosa manca ancora</h2>
+                </div>
+                <div class="card-meta" id="shoppingMeta"></div>
+              </div>
+              <div id="shoppingListContent"></div>
+            </div>
+          </div>
         </div>
-      </div>
-    </div>
 
-    <!-- ═══ TAB: GRUPPO ═══ -->
-    <div class="app-panel" id="tab-persone">
-      <div class="card">
-        <div class="card-title">➕ Aggiungi Partecipante</div>
-        <div class="add-person-form">
-          <input type="text" id="newPersonName" placeholder="Nome">
-          <select id="couplePartnerSelect">
-            <option value="">Nessuno (singolo)</option>
-          </select>
-          <button class="btn btn-primary" onclick="addPerson()">Aggiungi 🎉</button>
+        <div class="org-panel" id="org-chat" role="tabpanel" aria-labelledby="org-trigger-chat" hidden>
+          <div class="card chat-card">
+            <div class="card-head">
+              <div>
+                <p class="eyebrow">Gruppo</p>
+                <h2>Chat della grigliata</h2>
+              </div>
+              <div class="active-pill" id="chatIdentityPill">Scrivi come ...</div>
+            </div>
+
+            <div class="chat-messages" id="chatMessages"></div>
+
+            <form class="chat-form" onsubmit="event.preventDefault(); sendChatMessage();">
+              <label class="field field-grow">
+                <span class="sr-only">Messaggio</span>
+                <input type="text" id="chatInput" placeholder="Scrivi un messaggio al gruppo..." autocapitalize="sentences" autocomplete="off" enterkeyhint="send">
+              </label>
+              <button class="btn btn-primary" type="submit">Invia</button>
+            </form>
+          </div>
         </div>
-      </div>
 
-      <div style="display:flex; gap:0.5rem; margin-bottom:0.8rem;">
-        <button class="btn btn-secondary" onclick="makeCouple()" style="flex:1;">💕 Crea Coppia</button>
-        <button class="btn btn-danger" onclick="resetAll()" style="flex:1;">🔄 Reset Tutto</button>
-      </div>
+        <div class="org-panel" id="org-gruppo" role="tabpanel" aria-labelledby="org-trigger-gruppo" hidden>
+          <div class="content-grid">
+            <div class="card">
+              <div class="card-head">
+                <div>
+                  <p class="eyebrow">Partecipanti</p>
+                  <h2>Aggiungi persone</h2>
+                </div>
+              </div>
 
-      <div id="participantsList"></div>
+              <form class="stack-form" onsubmit="event.preventDefault(); addPerson();">
+                <div class="field-grid">
+                  <label class="field">
+                    <span>Nome</span>
+                    <input type="text" id="newPersonName" placeholder="Nome partecipante" autocapitalize="words" enterkeyhint="done">
+                  </label>
+                  <label class="field">
+                    <span>Abbina a partner</span>
+                    <select id="couplePartnerSelect">
+                      <option value="">Nessuno, resta singolo/a</option>
+                    </select>
+                  </label>
+                </div>
+                <div class="form-actions">
+                  <button class="btn btn-primary" type="submit">Aggiungi partecipante</button>
+                  <button class="btn btn-secondary" type="button" onclick="makeCouple()">Crea coppia manuale</button>
+                </div>
+              </form>
+            </div>
 
-      <!-- Backup Section -->
-      <div class="section-title" style="margin-top:1.5rem;">💾 Backup & Ripristino</div>
-      <div class="card">
-        <div class="card-title">💾 Gestione Backup</div>
-        <p style="font-size:0.8rem; color:#A1887F; margin-bottom:0.5rem;">
-          I dati sono salvati su server e sincronizzati su tutti i dispositivi. Crea backup per sicurezza!
-        </p>
-        <div class="backup-form">
-          <input type="text" id="backupDescInput" placeholder="Descrizione backup (opzionale)">
-          <button class="btn btn-primary" onclick="createBackup()">Crea Backup 💾</button>
+            <div class="card">
+              <div class="card-head">
+                <div>
+                  <p class="eyebrow">Salute del gruppo</p>
+                  <h2>Panoramica partecipanti</h2>
+                </div>
+              </div>
+              <div id="groupSummary"></div>
+            </div>
+          </div>
+
+          <div id="participantsList"></div>
         </div>
-        <div id="backupsList" style="margin-top:0.8rem;"></div>
-      </div>
-    </div>
+
+        <div class="org-panel" id="org-giochi" role="tabpanel" aria-labelledby="org-trigger-giochi" hidden>
+          <div class="content-grid">
+            <div class="card game-card">
+              <div class="card-head">
+                <div>
+                  <p class="eyebrow">Mini gioco</p>
+                  <h2>Grill Master</h2>
+                </div>
+                <div class="active-pill" id="gamesIdentityPill">Gioca come ...</div>
+              </div>
+
+              <p class="card-copy">
+                Ferma il cursore nella zona perfetta per girare la bistecca. Più sei preciso, più punti fai.
+              </p>
+
+              <div class="grill-lane">
+                <div class="grill-perfect-zone"></div>
+                <div class="grill-cursor" id="grillCursor"></div>
+              </div>
+
+              <div class="form-actions">
+                <button class="btn btn-secondary" id="grillStartBtn" type="button" onclick="startGrillGame()">Accendi la griglia</button>
+                <button class="btn btn-primary" id="grillStopBtn" type="button" onclick="stopGrillGame()" disabled>Gira la bistecca</button>
+              </div>
+
+              <div class="game-status" id="grillStatus">Pronto a giocare.</div>
+            </div>
+
+            <div class="card game-card">
+              <div class="card-head">
+                <div>
+                  <p class="eyebrow">Mini gioco</p>
+                  <h2>Spiedino Quiz</h2>
+                </div>
+              </div>
+
+              <div id="quizCard"></div>
+            </div>
+          </div>
+
+          <div class="content-grid">
+            <div class="card game-card">
+              <div class="card-head">
+                <div>
+                  <p class="eyebrow">Party mode</p>
+                  <h2>Pesca una sfida BBQ</h2>
+                </div>
+              </div>
+
+              <p class="card-copy">Una sfida rapida per movimentare il gruppo. Viene condivisa su tutti i dispositivi.</p>
+              <div id="partyChallengeCard"></div>
+              <div class="form-actions">
+                <button class="btn btn-primary" type="button" onclick="drawPartyChallenge()">Pesca una sfida</button>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-head">
+                <div>
+                  <p class="eyebrow">Classifica</p>
+                  <h2>Hall of Flame</h2>
+                </div>
+              </div>
+              <div id="gamesLeaderboard"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="org-panel" id="org-admin" role="tabpanel" aria-labelledby="org-trigger-admin" hidden>
+          <div class="content-grid">
+            <div class="card">
+              <div class="card-head">
+                <div>
+                  <p class="eyebrow">Sicurezza</p>
+                  <h2>Backup e ripristino</h2>
+                </div>
+              </div>
+
+              <p class="card-copy">Lo stato viene salvato sul server. Usa i backup per snapshot espliciti prima di cambiare molto.</p>
+
+              <form class="stack-form" onsubmit="event.preventDefault(); createBackup();">
+                <label class="field">
+                  <span>Descrizione backup</span>
+                  <input type="text" id="backupDescInput" placeholder="Es. Prima del mega acquisto di carne" autocapitalize="sentences" enterkeyhint="done">
+                </label>
+                <div class="form-actions">
+                  <button class="btn btn-primary" type="submit">Crea backup</button>
+                </div>
+              </form>
+
+              <div id="backupsList"></div>
+            </div>
+
+            <div class="card danger-card">
+              <div class="card-head">
+                <div>
+                  <p class="eyebrow">Danger zone</p>
+                  <h2>Azioni irreversibili</h2>
+                </div>
+              </div>
+              <p class="card-copy">Il reset crea un backup automatico, ma resta comunque un'azione forte. Meglio tenerla lontana dai flussi normali.</p>
+              <div class="form-actions">
+                <button class="btn btn-danger" type="button" onclick="resetAll()">Reset completo</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card builder-card">
+            <div class="card-head">
+              <div>
+                <p class="eyebrow">Sviluppo</p>
+                <h2>Builder</h2>
+              </div>
+              <button class="builder-panel-toggle" id="panelToggle" type="button" title="Apri chat e log builder" aria-controls="builderPanel" aria-expanded="false">
+                <span>Chat &amp; log</span>
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6l5 5 5-5"/></svg>
+                <span class="badge" id="toggleBadge"></span>
+              </button>
+            </div>
+
+            <p class="card-copy">Spostato nell'area admin per non sporcare l'esperienza di chi usa l'app durante la serata.</p>
+
+            <div class="builder-input-row">
+              <div class="builder-input-wrap">
+                <label class="sr-only" for="builderInput">Richiesta builder</label>
+                <input class="builder-input" id="builderInput" type="text" placeholder="Che modifica vuoi fare a quest'app?" autocapitalize="sentences" enterkeyhint="send">
+                <label class="sr-only" for="modelSelect">Modello builder</label>
+                <select class="builder-model-select" id="modelSelect">
+                  <option value="claude">Claude</option>
+                  <option value="codex">Codex</option>
+                </select>
+              </div>
+              <button class="builder-send-btn" id="sendBtn" type="button" title="Invia richiesta" aria-label="Invia richiesta al builder">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M2.5 1.8L14.3 7.5c.5.2.5.8 0 1L2.5 14.2c-.5.2-1-.1-1-.6V9.4L9 8 1.5 6.6V2.4c0-.5.5-.8 1-.6z"/></svg>
+              </button>
+              <button class="builder-stop-btn" id="stopBtn" type="button" title="Ferma builder" aria-label="Ferma builder">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true"><rect x="1" y="1" width="10" height="10" rx="2"/></svg>
+              </button>
+            </div>
+
+            <div class="builder-panel" id="builderPanel">
+              <div class="builder-panel-header">
+                <h3>Attività builder</h3>
+                <div class="builder-panel-tabs">
+                  <button class="panel-tab active" data-panel-tab="chat" type="button">Chat</button>
+                  <button class="panel-tab" data-panel-tab="log" type="button">Log</button>
+                </div>
+              </div>
+              <div class="builder-status-bar" id="builderStatus">
+                <span class="spinner" aria-hidden="true"></span>
+                <span id="builderStatusText">Working...</span>
+              </div>
+              <div class="builder-panel-body" id="panelBody">
+                <div class="tab-content active" data-panel-content="chat">
+                  <div class="builder-chat" id="builderChat"></div>
+                </div>
+                <div class="tab-content" data-panel-content="log">
+                  <div class="builder-log" id="builderLog"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
   </div>
 
-  <!-- Fun Modal -->
-  <div class="fun-modal-overlay" id="funModalOverlay">
-    <div class="fun-modal">
-      <div class="modal-emoji">🔥</div>
-      <div class="modal-title">Titolo</div>
-      <div class="modal-text">Testo</div>
-      <button class="btn btn-primary modal-btn" onclick="closeFunModal()">OK! 😂</button>
-    </div>
+  <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="true"></div>
+
+  <div class="modal-overlay" id="modalOverlay" hidden>
+    <div class="modal-shell" id="modalShell"></div>
   </div>
 
-  <!-- Emoji Picker -->
-  <div class="emoji-picker-overlay" id="emojiPickerOverlay">
+  <div class="emoji-picker-overlay" id="emojiPickerOverlay" hidden>
     <div class="emoji-picker">
-      <h3>Scegli un avatar!</h3>
+      <div class="card-head">
+        <div>
+          <p class="eyebrow">Avatar</p>
+          <h2>Scegli un'emoji</h2>
+        </div>
+        <button class="ghost-btn" type="button" onclick="closeEmojiPicker()">Chiudi</button>
+      </div>
       <div class="emoji-grid" id="emojiGrid"></div>
     </div>
   </div>
 
-  <!-- Edit Modal -->
-  <div class="edit-modal-overlay" id="editModalOverlay">
-    <div class="edit-modal">
-      <h3 id="editModalTitle">Modifica</h3>
-    </div>
-  </div>
-
-  <!-- Populate Emoji Grid -->
-  <script>
-    const emojiList = [
-      '👸','🧔','🦁','🦋','🐧','🌹','🤖','🦊','🦄','🐔','🐷','🐮','🐑','🦆',
-      '🐙','🦑','🦀','🐊','🦖','🦕','🐢','🐸','🦩','🦜','🦚','🐝','🐛','🐌',
-      '🐞','🐼','🐨','🐯','🐻','🦝','🦥','🦧','🐒','🦃','🐉','🐲','🤡','🤠',
-      '🧙','🧛','🧜','🧚','🧞','🥷','🦸','🦹','🧟','👻','👽','🤯','🥶','🥳',
-      '😎','🤓','🧐','🤪','🥸','💀','🎃','🤑','🫣','🤩','🥹','😈',
-      '💕','🔥','⚡','🌈','💫','🎪','🎭','🎯','🍕','🎸','🌺','🍖','🦴','🥩',
-    ];
-    const grid = document.getElementById('emojiGrid');
-    emojiList.forEach(e => {
-      const btn = document.createElement('button');
-      btn.className = 'emoji-option';
-      btn.textContent = e;
-      btn.onclick = () => selectEmoji(e);
-      grid.appendChild(btn);
-    });
-  </script>
-
   <script src="/js/app.js"></script>
-
-  <div class="builder-bar" id="builderBar">
-    <!-- Expandable panel -->
-    <div class="builder-panel" id="builderPanel">
-      <div class="builder-panel-header">
-        <h3>Builder</h3>
-        <div class="builder-panel-tabs">
-          <button class="panel-tab active" data-panel-tab="chat">Chat</button>
-          <button class="panel-tab" data-panel-tab="log">Log</button>
-        </div>
-      </div>
-      <div class="builder-status-bar" id="builderStatus">
-        <span class="spinner"></span>
-        <span id="builderStatusText">Working...</span>
-      </div>
-      <div class="builder-panel-body" id="panelBody">
-        <div class="tab-content active" data-panel-content="chat">
-          <div class="builder-chat" id="builderChat"></div>
-        </div>
-        <div class="tab-content" data-panel-content="log">
-          <div class="builder-log" id="builderLog"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Always-visible input bar -->
-    <div class="builder-input-row">
-      <button class="builder-panel-toggle" id="panelToggle" title="Toggle builder panel">
-        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6l5 5 5-5"/></svg>
-        <span class="badge" id="toggleBadge"></span>
-      </button>
-      <div class="builder-input-wrap">
-        <input class="builder-input" id="builderInput" type="text" placeholder="What should this app do?">
-        <select class="builder-model-select" id="modelSelect">
-          <option value="claude">Claude</option>
-          <option value="codex">Codex</option>
-        </select>
-      </div>
-      <button class="builder-send-btn" id="sendBtn" title="Send">
-        <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M2.5 1.8L14.3 7.5c.5.2.5.8 0 1L2.5 14.2c-.5.2-1-.1-1-.6V9.4L9 8 1.5 6.6V2.4c0-.5.5-.8 1-.6z"/></svg>
-      </button>
-      <button class="builder-stop-btn" id="stopBtn" title="Stop">
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor"><rect x="1" y="1" width="10" height="10" rx="2"/></svg>
-      </button>
-    </div>
-  </div>
 
   <script>
     const APP_NAME = 'grigliata';
@@ -492,11 +499,11 @@
     let conversationContext = [];
     let panelOpen = false;
 
-    // ── Panel toggle ──
     panelToggle.addEventListener('click', () => {
       panelOpen = !panelOpen;
       builderPanel.classList.toggle('open', panelOpen);
       panelToggle.classList.toggle('active', panelOpen);
+      panelToggle.setAttribute('aria-expanded', String(panelOpen));
       panelToggle.querySelector('svg').style.transform = panelOpen ? 'rotate(180deg)' : '';
       if (panelOpen) {
         builderChat.scrollTop = builderChat.scrollHeight;
@@ -504,7 +511,6 @@
       }
     });
 
-    // ── Panel tabs ──
     document.querySelectorAll('.panel-tab').forEach(tab => {
       tab.addEventListener('click', () => {
         document.querySelectorAll('.panel-tab').forEach(t => t.classList.remove('active'));
@@ -514,9 +520,11 @@
       });
     });
 
-    // ── Send on Enter ──
     builderInput.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); sendCommand(); }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        sendCommand();
+      }
     });
     sendBtn.addEventListener('click', sendCommand);
     stopBtn.addEventListener('click', stopCommand);
@@ -536,7 +544,7 @@
       builderInput.disabled = on;
       builderStatus.classList.toggle('visible', on);
       toggleBadge.classList.toggle('running', on);
-      if (!on) { builderInput.focus(); }
+      if (!on) builderInput.focus();
     }
 
     async function sendCommand() {
@@ -546,7 +554,6 @@
       addChatMsg(prompt, 'user');
       builderInput.value = '';
 
-      // Auto-open panel
       if (!panelOpen) panelToggle.click();
 
       conversationContext.push({ role: 'user', text: prompt });
@@ -575,11 +582,10 @@
 
         fullOutput = await streamOutput();
       } catch (err) {
-        if (err.name !== 'AbortError') {
-          addChatMsg('Error: ' + err.message, 'error');
-        }
+        if (err.name !== 'AbortError') addChatMsg('Error: ' + err.message, 'error');
       }
       setRunningUI(false);
+      return fullOutput;
     }
 
     async function streamOutput() {
@@ -649,11 +655,12 @@
     async function waitForHealth() {
       for (let i = 0; i < 20; i++) {
         await new Promise(r => setTimeout(r, 1500));
-        try { if ((await fetch('/health', { cache: 'no-store' })).ok) return; } catch {}
+        try {
+          if ((await fetch('/health', { cache: 'no-store' })).ok) return;
+        } catch {}
       }
     }
 
-    // ── Load history ──
     async function loadHistory() {
       try {
         const res = await fetch(`${API_BASE}/api/builder/history?app=${encodeURIComponent(APP_NAME)}`, { credentials: 'same-origin' });
@@ -670,7 +677,6 @@
       } catch {}
     }
 
-    // ── Check running command on load ──
     async function checkRunningCommand() {
       try {
         const res = await fetch(`${API_BASE}/api/builder/list`, { credentials: 'same-origin' });
