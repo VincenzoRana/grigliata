@@ -1,16 +1,56 @@
 const express = require('express');
 const http = require('http');
 const path = require('path');
+const fs = require('fs');
 const Database = require('better-sqlite3');
 
 const PORT = Number(process.env.PORT || 3000);
 const SERVERS_TOOL_PORT = 3004;
-const DB_PATH = path.join(__dirname, 'data', 'grigliata.db');
+const APP_NAME = 'grigliata';
+const HOME_DIR = process.env.HOME || __dirname;
+const XDG_DATA_HOME = process.env.XDG_DATA_HOME || path.join(HOME_DIR, '.local', 'share');
+const LEGACY_DATA_DIR = path.join(__dirname, 'data');
+const DATA_DIR = process.env.GRIGLIATA_DATA_DIR
+  ? path.resolve(process.env.GRIGLIATA_DATA_DIR)
+  : path.join(XDG_DATA_HOME, APP_NAME);
+const DB_PATH = path.join(DATA_DIR, 'grigliata.db');
+const RECOVERY_DIR = path.join(DATA_DIR, 'recovery');
+const MAX_BACKUPS = 250;
 
-// ── Ensure data directory exists ──
-const fs = require('fs');
-const dataDir = path.join(__dirname, 'data');
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+function ensureDir(dirPath) {
+  if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
+}
+
+function migrateLegacyDatabase() {
+  ensureDir(DATA_DIR);
+  ensureDir(RECOVERY_DIR);
+  if (fs.existsSync(DB_PATH)) return;
+  const legacyDbPath = path.join(LEGACY_DATA_DIR, 'grigliata.db');
+  if (!fs.existsSync(legacyDbPath)) return;
+  for (const suffix of ['', '-wal', '-shm']) {
+    const source = `${legacyDbPath}${suffix}`;
+    const target = `${DB_PATH}${suffix}`;
+    if (fs.existsSync(source) && !fs.existsSync(target)) {
+      fs.copyFileSync(source, target);
+    }
+  }
+}
+
+function pruneBackups(limit = MAX_BACKUPS) {
+  db.prepare(`
+    DELETE FROM backups
+    WHERE id NOT IN (SELECT id FROM backups ORDER BY created_at DESC, id DESC LIMIT ?)
+  `).run(limit);
+}
+
+function createBackupEntry(data, description) {
+  if (data == null || data === 'null') return null;
+  const result = db.prepare('INSERT INTO backups (data, description) VALUES (?, ?)').run(data, description);
+  pruneBackups();
+  return result.lastInsertRowid;
+}
+
+migrateLegacyDatabase();
 
 // ── Database setup ──
 const db = new Database(DB_PATH);
@@ -67,6 +107,10 @@ app.put('/api/state', (req, res) => {
   const { state } = req.body;
   if (!state) return res.status(400).json({ error: 'Missing state' });
   const data = JSON.stringify(state);
+  const current = db.prepare('SELECT data FROM app_state WHERE id = 1').get();
+  if (current?.data && current.data !== data && current.data !== 'null') {
+    createBackupEntry(current.data, `Auto-backup before state update (${new Date().toLocaleString('it-IT')})`);
+  }
   db.prepare(`
     UPDATE app_state SET data = ?, version = version + 1, updated_at = datetime('now') WHERE id = 1
   `).run(data);
@@ -81,12 +125,9 @@ app.post('/api/backups', (req, res) => {
   const { description } = req.body || {};
   const row = db.prepare('SELECT data FROM app_state WHERE id = 1').get();
   const desc = description || `Backup ${new Date().toLocaleString('it-IT')}`;
-  const result = db.prepare('INSERT INTO backups (data, description) VALUES (?, ?)').run(row.data, desc);
-  // Keep max 50 backups, delete oldest
-  db.prepare(`
-    DELETE FROM backups WHERE id NOT IN (SELECT id FROM backups ORDER BY created_at DESC LIMIT 50)
-  `).run();
-  res.json({ id: result.lastInsertRowid, description: desc });
+  const backupId = createBackupEntry(row?.data, desc);
+  if (!backupId) return res.status(400).json({ error: 'Nothing to back up yet' });
+  res.json({ id: backupId, description: desc });
 });
 
 // List backups
@@ -102,7 +143,7 @@ app.post('/api/backups/:id/restore', (req, res) => {
 
   // Auto-backup current state before restoring
   const current = db.prepare('SELECT data FROM app_state WHERE id = 1').get();
-  db.prepare('INSERT INTO backups (data, description) VALUES (?, ?)').run(
+  createBackupEntry(
     current.data,
     `Auto-backup prima del ripristino (${new Date().toLocaleString('it-IT')})`
   );
@@ -121,20 +162,38 @@ app.delete('/api/backups/:id', (req, res) => {
 });
 
 // ── Proxy builder API requests to servers-tool ──
-app.all('/api/builder/*', (req, res) => {
+function proxyBuilderRequest(req, res) {
+  const headers = { ...req.headers, host: 'servers.vincenzo-rana.it' };
+  const hasParsedBody = !['GET', 'HEAD'].includes(req.method) && req.body !== undefined;
+  let payload = null;
+
+  if (hasParsedBody) {
+    if (Buffer.isBuffer(req.body)) payload = req.body;
+    else if (typeof req.body === 'string') payload = Buffer.from(req.body);
+    else payload = Buffer.from(JSON.stringify(req.body));
+    headers['content-type'] = headers['content-type'] || 'application/json';
+    headers['content-length'] = String(payload.length);
+    delete headers['transfer-encoding'];
+  }
+
   const options = {
     hostname: '127.0.0.1',
     port: SERVERS_TOOL_PORT,
     path: req.url,
     method: req.method,
-    headers: { ...req.headers, host: 'servers.vincenzo-rana.it' },
+    headers,
   };
   const proxy = http.request(options, (upstream) => {
     res.writeHead(upstream.statusCode, upstream.headers);
     upstream.pipe(res);
   });
-  proxy.on('error', () => res.status(502).json({ error: 'proxy error' }));
-  req.pipe(proxy);
+  proxy.on('error', (err) => res.status(502).json({ error: `proxy error: ${err.message}` }));
+  if (payload) proxy.end(payload);
+  else req.pipe(proxy);
+}
+
+app.all('/api/builder/*', (req, res) => {
+  proxyBuilderRequest(req, res);
 });
 
 app.listen(PORT, '0.0.0.0', () => {

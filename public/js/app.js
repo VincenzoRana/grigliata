@@ -114,6 +114,46 @@ let stateVersion = 0;
 let saveTimeout = null;
 let isSaving = false;
 let isLoading = false;
+let hasLoadedServerState = false;
+let lastLoadErrorMessage = '';
+
+function showServerLoadGuard(message) {
+  let overlay = document.getElementById('serverLoadGuard');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'serverLoadGuard';
+    Object.assign(overlay.style, {
+      position: 'fixed',
+      inset: '0',
+      zIndex: '9999',
+      display: 'none',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: '1.5rem',
+      background: 'rgba(10, 14, 18, 0.82)',
+      backdropFilter: 'blur(10px)',
+    });
+    overlay.innerHTML = `
+      <div style="max-width: 34rem; width: 100%; background: #121a23; color: #f5f8fb; border: 1px solid rgba(255,255,255,0.08); border-radius: 20px; padding: 1.25rem 1.1rem; box-shadow: 0 24px 80px rgba(0,0,0,0.45);">
+        <div style="font-size: 1.05rem; font-weight: 800; margin-bottom: 0.4rem;">Modalità protetta</div>
+        <div data-guard-message style="color: rgba(245,248,251,0.76); line-height: 1.45; margin-bottom: 0.9rem;"></div>
+        <div style="display:flex; gap:0.6rem; flex-wrap:wrap;">
+          <button type="button" data-guard-reload style="border:none; border-radius:999px; padding:0.72rem 1rem; font-weight:700; background:#ff8b36; color:#111;">Ricarica pagina</button>
+        </div>
+      </div>
+    `;
+    overlay.querySelector('[data-guard-reload]').addEventListener('click', () => window.location.reload());
+    document.body.appendChild(overlay);
+  }
+  overlay.querySelector('[data-guard-message]').textContent =
+    message || 'Non sono riuscito a caricare lo stato dal server. Per sicurezza il salvataggio è bloccato finché non ricarichi la pagina con il server di nuovo raggiungibile.';
+  overlay.style.display = 'flex';
+}
+
+function hideServerLoadGuard() {
+  const overlay = document.getElementById('serverLoadGuard');
+  if (overlay) overlay.style.display = 'none';
+}
 
 // ── API Layer ──
 async function loadStateFromServer() {
@@ -122,19 +162,29 @@ async function loadStateFromServer() {
     if (!res.ok) throw new Error('Failed to load state');
     const { state: serverState, version } = await res.json();
     stateVersion = version;
+    hasLoadedServerState = true;
+    lastLoadErrorMessage = '';
     if (serverState) {
       // Merge with defaults to handle missing fields
       state = { ...JSON.parse(JSON.stringify(DEFAULT_STATE)), ...serverState };
       if (!state.wishlist) state.wishlist = [];
     }
+    hideServerLoadGuard();
     return true;
   } catch (e) {
+    hasLoadedServerState = false;
+    lastLoadErrorMessage = e?.message || 'Failed to load state';
     console.warn('Failed to load from server, using defaults:', e);
     return false;
   }
 }
 
 async function saveStateToServer() {
+  if (!hasLoadedServerState) {
+    console.warn('Blocked save because initial server state load did not succeed.');
+    if (lastLoadErrorMessage) showServerLoadGuard(`Il server non ha caricato correttamente i dati (${lastLoadErrorMessage}). Per evitare di sovrascrivere il database con i valori di default, il salvataggio è bloccato finché non ricarichi la pagina.`);
+    return false;
+  }
   if (isSaving) return;
   isSaving = true;
   try {
@@ -151,9 +201,11 @@ async function saveStateToServer() {
     console.warn('Failed to save to server:', e);
   }
   isSaving = false;
+  return true;
 }
 
 function debouncedSave() {
+  if (!hasLoadedServerState) return;
   if (saveTimeout) clearTimeout(saveTimeout);
   saveTimeout = setTimeout(() => saveStateToServer(), 300);
 }
@@ -1442,7 +1494,10 @@ function escapeHtml(str) {
 // ── Init ──
 document.addEventListener('DOMContentLoaded', async () => {
   // Load state from server
-  await loadStateFromServer();
+  const loaded = await loadStateFromServer();
+  if (!loaded) {
+    showServerLoadGuard(`Non sono riuscito a caricare lo stato dal server (${lastLoadErrorMessage || 'errore sconosciuto'}). Ti mostro i valori di default ma il salvataggio resta bloccato per proteggere il database.`);
+  }
 
   // Tab clicks
   document.querySelectorAll('.app-tab').forEach(tab => {
