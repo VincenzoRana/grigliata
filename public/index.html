@@ -17,41 +17,90 @@
 <body>
   <a class="skip-link" href="#mainContent">Salta al contenuto</a>
   <div class="app-shell">
-    <header class="hero">
+    <header class="hero hero-slim">
       <div class="hero-copy">
         <p class="eyebrow">Conti chiari, braci accese</p>
         <h1>La Grigliata</h1>
-        <p class="hero-lede">
-          Un'unica app per segnare spese, regolare i conti, organizzare la serata
-          e perdere qualche minuto con mini giochi a tema barbecue.
-        </p>
-      </div>
-
-      <div class="hero-stats" id="heroStats"></div>
-
-      <div class="card identity-card">
-        <div class="card-head">
-          <div>
-            <p class="eyebrow">Profilo attivo</p>
-            <h2>Tu chi sei?</h2>
-          </div>
-          <div class="active-pill" id="activeIdentityPill">Nessun profilo</div>
-        </div>
-        <p class="card-copy">
-          Il profilo attivo viene usato per commenti, wishlist, chat, lista della spesa e mini giochi su questo dispositivo.
-        </p>
-        <div class="identity-switcher" id="identitySwitcher"></div>
       </div>
     </header>
 
     <nav class="primary-nav" aria-label="Sezioni principali" role="tablist">
-      <button class="primary-tab active" data-tab="spese" type="button" role="tab" id="tab-trigger-spese" aria-controls="tab-spese" aria-selected="true">Spese</button>
-      <button class="primary-tab" data-tab="regolamento" type="button" role="tab" id="tab-trigger-regolamento" aria-controls="tab-regolamento" aria-selected="false" tabindex="-1">Regolamento</button>
-      <button class="primary-tab" data-tab="organizzazione" type="button" role="tab" id="tab-trigger-organizzazione" aria-controls="tab-organizzazione" aria-selected="false" tabindex="-1">Organizzazione</button>
+      <button class="primary-tab active" data-section="home" type="button" role="tab" aria-controls="tab-home" aria-selected="true">🏠 Home</button>
+      <button class="primary-tab" data-section="spese" type="button" role="tab" aria-controls="tab-spese" aria-selected="false" tabindex="-1">🍖 Spese</button>
+      <button class="primary-tab" data-section="regolamento" type="button" role="tab" aria-controls="tab-regolamento" aria-selected="false" tabindex="-1">⚖️ Conti</button>
+      <button class="primary-tab" data-section="lista" type="button" role="tab" aria-controls="tab-lista" aria-selected="false" tabindex="-1">📝 Lista</button>
+      <button class="primary-tab" data-section="chat" type="button" role="tab" aria-controls="tab-chat" aria-selected="false" tabindex="-1">💬 Chat</button>
+      <button class="primary-tab" data-section="wishlist" type="button" role="tab" aria-controls="tab-wishlist" aria-selected="false" tabindex="-1">🎁 Wishlist</button>
+      <button class="primary-tab" data-section="gruppo" type="button" role="tab" aria-controls="tab-gruppo" aria-selected="false" tabindex="-1">👥 Gruppo</button>
+      <button class="primary-tab" data-section="giochi" type="button" role="tab" aria-controls="tab-giochi" aria-selected="false" tabindex="-1">🎲 Giochi</button>
+      <button class="primary-tab" data-section="impostazioni" type="button" role="tab" aria-controls="tab-impostazioni" aria-selected="false" tabindex="-1">⚙️ Impostazioni</button>
     </nav>
 
     <main class="main-layout" id="mainContent">
-      <section class="tab-panel active" id="tab-spese" role="tabpanel" aria-labelledby="tab-trigger-spese">
+      <section class="tab-panel active" id="tab-home" data-accent="home" role="tabpanel">
+        <div class="dashboard-greeting card card-accent-soft">
+          <div class="dashboard-greeting-main">
+            <span class="avatar dashboard-greeting-avatar" id="dashboardGreetingAvatar">👤</span>
+            <div>
+              <p class="eyebrow">Ciao</p>
+              <h2 id="dashboardGreetingName">Partecipante</h2>
+              <p class="dashboard-greeting-sub" id="dashboardGreetingSub">Scegli chi sei dalle impostazioni.</p>
+            </div>
+          </div>
+          <button class="btn btn-secondary" type="button" onclick="navigateTo('impostazioni')">Cambia profilo</button>
+        </div>
+
+        <div class="hero-stats" id="dashboardStats"></div>
+
+        <div class="card card-accent" id="dashboardPersonalBalanceCard">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Il tuo saldo</p>
+              <h2 id="dashboardPersonalBalanceTitle">Come stai messo</h2>
+            </div>
+          </div>
+          <div id="dashboardPersonalBalance"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Azioni rapide</p>
+              <h2>Cosa vuoi fare?</h2>
+            </div>
+          </div>
+          <div class="quick-actions-grid">
+            <button class="quick-action" type="button" onclick="navigateTo('spese')">
+              <span class="quick-action-icon" aria-hidden="true">💰</span>
+              <span class="quick-action-label">Nuova spesa</span>
+            </button>
+            <button class="quick-action" type="button" onclick="navigateTo('lista')">
+              <span class="quick-action-icon" aria-hidden="true">📝</span>
+              <span class="quick-action-label">Aggiungi a lista</span>
+            </button>
+            <button class="quick-action" type="button" onclick="navigateTo('chat')">
+              <span class="quick-action-icon" aria-hidden="true">💬</span>
+              <span class="quick-action-label">Scrivi in chat</span>
+            </button>
+            <button class="quick-action" type="button" onclick="navigateTo('wishlist')">
+              <span class="quick-action-icon" aria-hidden="true">🎁</span>
+              <span class="quick-action-label">Wishlist</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Attività recente</p>
+              <h2>Cosa succede nel gruppo</h2>
+            </div>
+          </div>
+          <div id="dashboardActivity"></div>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="tab-spese" data-accent="spese" role="tabpanel" hidden>
         <div class="content-grid">
           <div class="card card-accent">
             <div class="card-head">
@@ -115,7 +164,7 @@
         </div>
       </section>
 
-      <section class="tab-panel" id="tab-regolamento" role="tabpanel" aria-labelledby="tab-trigger-regolamento" hidden>
+      <section class="tab-panel" id="tab-regolamento" data-accent="regolamento" role="tabpanel" hidden>
         <div class="content-grid">
           <div class="card card-dark">
             <div class="card-head">
@@ -152,253 +201,519 @@
         </div>
       </section>
 
-      <section class="tab-panel" id="tab-organizzazione" role="tabpanel" aria-labelledby="tab-trigger-organizzazione" hidden>
-        <nav class="sub-nav" aria-label="Sezioni organizzazione" role="tablist">
-          <button class="sub-tab active" data-org-tab="wishlist" type="button" role="tab" id="org-trigger-wishlist" aria-controls="org-wishlist" aria-selected="true">Wishlist</button>
-          <button class="sub-tab" data-org-tab="lista" type="button" role="tab" id="org-trigger-lista" aria-controls="org-lista" aria-selected="false" tabindex="-1">Lista</button>
-          <button class="sub-tab" data-org-tab="chat" type="button" role="tab" id="org-trigger-chat" aria-controls="org-chat" aria-selected="false" tabindex="-1">Chat</button>
-          <button class="sub-tab" data-org-tab="gruppo" type="button" role="tab" id="org-trigger-gruppo" aria-controls="org-gruppo" aria-selected="false" tabindex="-1">Gruppo</button>
-          <button class="sub-tab" data-org-tab="giochi" type="button" role="tab" id="org-trigger-giochi" aria-controls="org-giochi" aria-selected="false" tabindex="-1">Giochi</button>
-          <button class="sub-tab" data-org-tab="admin" type="button" role="tab" id="org-trigger-admin" aria-controls="org-admin" aria-selected="false" tabindex="-1">Admin</button>
-        </nav>
-
-        <div class="org-panel active" id="org-wishlist" role="tabpanel" aria-labelledby="org-trigger-wishlist">
-          <div class="content-grid">
-            <div class="card card-accent-soft">
-              <div class="card-head">
-                <div>
-                  <p class="eyebrow">Organizzazione</p>
-                  <h2>Cosa serve davvero?</h2>
-                </div>
-                <div class="active-pill" id="wishlistIdentityPill">Richiesta da ...</div>
-              </div>
-
-              <form class="stack-form" onsubmit="event.preventDefault(); addWishlistItem();">
-                <label class="field">
-                  <span>Nuovo desiderio</span>
-                  <input type="text" id="wishlistInput" placeholder="Costine, focaccia, ghiaccio, limoni..." autocapitalize="sentences" enterkeyhint="done">
-                </label>
-                <div class="form-actions">
-                  <button class="btn btn-primary" type="submit">Aggiungi alla wishlist</button>
-                </div>
-              </form>
-            </div>
-
-            <div class="card" id="wishlistProgressWrap"></div>
-          </div>
-
-          <div id="wishlistContent"></div>
-        </div>
-
-        <div class="org-panel" id="org-lista" role="tabpanel" aria-labelledby="org-trigger-lista" hidden>
-          <div class="content-grid">
-            <div class="card">
-              <div class="card-head">
-                <div>
-                  <p class="eyebrow">Operativo</p>
-                  <h2>Lista della spesa</h2>
-                </div>
-                <div class="active-pill" id="shoppingIdentityPill">Aggiungi come ...</div>
-              </div>
-
-              <form class="stack-form" onsubmit="event.preventDefault(); addShoppingItem();">
-                <label class="field">
-                  <span>Nuovo elemento</span>
-                  <input type="text" id="shoppingInput" placeholder="Pane, carbonella, piatti, tovaglioli..." autocapitalize="sentences" enterkeyhint="done">
-                </label>
-                <div class="form-actions">
-                  <button class="btn btn-primary" type="submit">Aggiungi alla lista</button>
-                </div>
-              </form>
-            </div>
-
-            <div class="card">
-              <div class="card-head">
-                <div>
-                  <p class="eyebrow">Stato</p>
-                  <h2>Cosa manca ancora</h2>
-                </div>
-                <div class="card-meta" id="shoppingMeta"></div>
-              </div>
-              <div id="shoppingListContent"></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="org-panel" id="org-chat" role="tabpanel" aria-labelledby="org-trigger-chat" hidden>
-          <div class="card chat-card">
+      <section class="tab-panel" id="tab-wishlist" data-accent="wishlist" role="tabpanel" hidden>
+        <div class="content-grid">
+          <div class="card card-accent-soft">
             <div class="card-head">
               <div>
-                <p class="eyebrow">Gruppo</p>
-                <h2>Chat della grigliata</h2>
+                <p class="eyebrow">Wishlist</p>
+                <h2>Cosa serve davvero?</h2>
               </div>
-              <div class="active-pill" id="chatIdentityPill">Scrivi come ...</div>
             </div>
 
-            <div class="chat-messages" id="chatMessages"></div>
-
-            <form class="chat-form" onsubmit="event.preventDefault(); sendChatMessage();">
-              <label class="field field-grow">
-                <span class="sr-only">Messaggio</span>
-                <input type="text" id="chatInput" placeholder="Scrivi un messaggio al gruppo..." autocapitalize="sentences" autocomplete="off" enterkeyhint="send">
+            <form class="stack-form" onsubmit="event.preventDefault(); addWishlistItem();">
+              <label class="field">
+                <span>Nuovo desiderio</span>
+                <input type="text" id="wishlistInput" placeholder="Costine, focaccia, ghiaccio, limoni..." autocapitalize="sentences" enterkeyhint="done">
               </label>
-              <button class="btn btn-primary" type="submit">Invia</button>
+              <div class="form-actions">
+                <button class="btn btn-primary" type="submit">Aggiungi alla wishlist</button>
+              </div>
             </form>
           </div>
+
+          <div class="card" id="wishlistProgressWrap"></div>
         </div>
 
-        <div class="org-panel" id="org-gruppo" role="tabpanel" aria-labelledby="org-trigger-gruppo" hidden>
-          <div class="content-grid">
-            <div class="card">
-              <div class="card-head">
-                <div>
-                  <p class="eyebrow">Partecipanti</p>
-                  <h2>Aggiungi persone</h2>
-                </div>
-              </div>
+        <div id="wishlistContent"></div>
+      </section>
 
-              <form class="stack-form" onsubmit="event.preventDefault(); addPerson();">
-                <div class="field-grid">
-                  <label class="field">
-                    <span>Nome</span>
-                    <input type="text" id="newPersonName" placeholder="Nome partecipante" autocapitalize="words" enterkeyhint="done">
-                  </label>
-                  <label class="field">
-                    <span>Abbina a partner</span>
-                    <select id="couplePartnerSelect">
-                      <option value="">Nessuno, resta singolo/a</option>
-                    </select>
-                  </label>
-                </div>
-                <div class="form-actions">
-                  <button class="btn btn-primary" type="submit">Aggiungi partecipante</button>
-                  <button class="btn btn-secondary" type="button" onclick="makeCouple()">Crea coppia manuale</button>
-                </div>
-              </form>
+      <section class="tab-panel" id="tab-lista" data-accent="lista" role="tabpanel" hidden>
+        <div class="content-grid">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <p class="eyebrow">Operativo</p>
+                <h2>Lista della spesa</h2>
+              </div>
             </div>
 
-            <div class="card">
-              <div class="card-head">
-                <div>
-                  <p class="eyebrow">Salute del gruppo</p>
-                  <h2>Panoramica partecipanti</h2>
-                </div>
-              </div>
-              <div id="groupSummary"></div>
-            </div>
-          </div>
-
-          <div id="participantsList"></div>
-        </div>
-
-        <div class="org-panel" id="org-giochi" role="tabpanel" aria-labelledby="org-trigger-giochi" hidden>
-          <div class="content-grid">
-            <div class="card game-card">
-              <div class="card-head">
-                <div>
-                  <p class="eyebrow">Mini gioco</p>
-                  <h2>Grill Master</h2>
-                </div>
-                <div class="active-pill" id="gamesIdentityPill">Gioca come ...</div>
-              </div>
-
-              <p class="card-copy">
-                Ferma il cursore nella zona perfetta per girare la bistecca. Più sei preciso, più punti fai.
-              </p>
-
-              <div class="grill-lane">
-                <div class="grill-perfect-zone"></div>
-                <div class="grill-cursor" id="grillCursor"></div>
-              </div>
-
+            <form class="stack-form" onsubmit="event.preventDefault(); addShoppingItem();">
+              <label class="field">
+                <span>Nuovo elemento</span>
+                <input type="text" id="shoppingInput" placeholder="Pane, carbonella, piatti, tovaglioli..." autocapitalize="sentences" enterkeyhint="done">
+              </label>
               <div class="form-actions">
-                <button class="btn btn-secondary" id="grillStartBtn" type="button" onclick="startGrillGame()">Accendi la griglia</button>
-                <button class="btn btn-primary" id="grillStopBtn" type="button" onclick="stopGrillGame()" disabled>Gira la bistecca</button>
+                <button class="btn btn-primary" type="submit">Aggiungi alla lista</button>
               </div>
-
-              <div class="game-status" id="grillStatus">Pronto a giocare.</div>
-            </div>
-
-            <div class="card game-card">
-              <div class="card-head">
-                <div>
-                  <p class="eyebrow">Mini gioco</p>
-                  <h2>Spiedino Quiz</h2>
-                </div>
-              </div>
-
-              <div id="quizCard"></div>
-            </div>
+            </form>
           </div>
 
-          <div class="content-grid">
-            <div class="card game-card">
-              <div class="card-head">
-                <div>
-                  <p class="eyebrow">Party mode</p>
-                  <h2>Pesca una sfida BBQ</h2>
-                </div>
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <p class="eyebrow">Stato</p>
+                <h2>Cosa manca ancora</h2>
               </div>
-
-              <p class="card-copy">Una sfida rapida per movimentare il gruppo. Viene condivisa su tutti i dispositivi.</p>
-              <div id="partyChallengeCard"></div>
-              <div class="form-actions">
-                <button class="btn btn-primary" type="button" onclick="drawPartyChallenge()">Pesca una sfida</button>
-              </div>
+              <div class="card-meta" id="shoppingMeta"></div>
             </div>
-
-            <div class="card">
-              <div class="card-head">
-                <div>
-                  <p class="eyebrow">Classifica</p>
-                  <h2>Hall of Flame</h2>
-                </div>
-              </div>
-              <div id="gamesLeaderboard"></div>
-            </div>
+            <div id="shoppingListContent"></div>
           </div>
         </div>
+      </section>
 
-        <div class="org-panel" id="org-admin" role="tabpanel" aria-labelledby="org-trigger-admin" hidden>
-          <div class="content-grid">
-            <div class="card">
-              <div class="card-head">
-                <div>
-                  <p class="eyebrow">Sicurezza</p>
-                  <h2>Backup e ripristino</h2>
-                </div>
+      <section class="tab-panel" id="tab-chat" data-accent="chat" role="tabpanel" hidden>
+        <div class="card chat-card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Gruppo</p>
+              <h2>Chat della grigliata</h2>
+            </div>
+          </div>
+
+          <div class="chat-messages" id="chatMessages"></div>
+
+          <form class="chat-form" onsubmit="event.preventDefault(); sendChatMessage();">
+            <label class="field field-grow">
+              <span class="sr-only">Messaggio</span>
+              <input type="text" id="chatInput" placeholder="Scrivi un messaggio al gruppo..." autocapitalize="sentences" autocomplete="off" enterkeyhint="send">
+            </label>
+            <button class="btn btn-primary" type="submit">Invia</button>
+          </form>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="tab-gruppo" data-accent="gruppo" role="tabpanel" hidden>
+        <div class="content-grid">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <p class="eyebrow">Partecipanti</p>
+                <h2>Aggiungi persone</h2>
               </div>
+            </div>
 
-              <p class="card-copy">Lo stato viene salvato sul server. Usa i backup per snapshot espliciti prima di cambiare molto.</p>
-
-              <form class="stack-form" onsubmit="event.preventDefault(); createBackup();">
+            <form class="stack-form" onsubmit="event.preventDefault(); addPerson();">
+              <div class="field-grid">
                 <label class="field">
-                  <span>Descrizione backup</span>
-                  <input type="text" id="backupDescInput" placeholder="Es. Prima del mega acquisto di carne" autocapitalize="sentences" enterkeyhint="done">
+                  <span>Nome</span>
+                  <input type="text" id="newPersonName" placeholder="Nome partecipante" autocapitalize="words" enterkeyhint="done">
                 </label>
-                <div class="form-actions">
-                  <button class="btn btn-primary" type="submit">Crea backup</button>
-                </div>
-              </form>
-
-              <div id="backupsList"></div>
-            </div>
-
-            <div class="card danger-card">
-              <div class="card-head">
-                <div>
-                  <p class="eyebrow">Danger zone</p>
-                  <h2>Azioni irreversibili</h2>
-                </div>
+                <label class="field">
+                  <span>Abbina a partner</span>
+                  <select id="couplePartnerSelect">
+                    <option value="">Nessuno, resta singolo/a</option>
+                  </select>
+                </label>
               </div>
-              <p class="card-copy">Il reset crea un backup automatico, ma resta comunque un'azione forte. Meglio tenerla lontana dai flussi normali.</p>
               <div class="form-actions">
-                <button class="btn btn-danger" type="button" onclick="resetAll()">Reset completo</button>
+                <button class="btn btn-primary" type="submit">Aggiungi partecipante</button>
+                <button class="btn btn-secondary" type="button" onclick="makeCouple()">Crea coppia manuale</button>
               </div>
-            </div>
+            </form>
           </div>
 
-          <div class="card builder-card">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <p class="eyebrow">Salute del gruppo</p>
+                <h2>Panoramica partecipanti</h2>
+              </div>
+            </div>
+            <div id="groupSummary"></div>
+          </div>
+        </div>
+
+        <div id="participantsList"></div>
+      </section>
+
+      <section class="tab-panel" id="tab-giochi" data-accent="giochi" role="tabpanel" hidden>
+        <div class="content-grid">
+          <div class="card game-card">
+            <div class="card-head">
+              <div>
+                <p class="eyebrow">Mini gioco</p>
+                <h2>Grill Master</h2>
+              </div>
+            </div>
+
+            <p class="card-copy">
+              Ferma il cursore nella zona perfetta per girare la bistecca. Più sei preciso, più punti fai.
+            </p>
+
+            <div class="grill-lane">
+              <div class="grill-perfect-zone"></div>
+              <div class="grill-cursor" id="grillCursor"></div>
+            </div>
+
+            <div class="form-actions">
+              <button class="btn btn-secondary" id="grillStartBtn" type="button" onclick="startGrillGame()">Accendi la griglia</button>
+              <button class="btn btn-primary" id="grillStopBtn" type="button" onclick="stopGrillGame()" disabled>Gira la bistecca</button>
+            </div>
+
+            <div class="game-status" id="grillStatus">Pronto a giocare.</div>
+          </div>
+
+          <div class="card game-card">
+            <div class="card-head">
+              <div>
+                <p class="eyebrow">Mini gioco</p>
+                <h2>Spiedino Quiz</h2>
+              </div>
+            </div>
+
+            <div id="quizCard"></div>
+          </div>
+        </div>
+
+        <div class="content-grid">
+          <div class="card game-card">
+            <div class="card-head">
+              <div>
+                <p class="eyebrow">Mini gioco</p>
+                <h2>Reazione Brace</h2>
+              </div>
+            </div>
+            <p class="card-copy">Quando le fiamme diventano verdi, tocca il più veloce possibile. Attento ai falsi start.</p>
+            <button class="reaction-pad" id="reactionPad" type="button" onclick="handleReactionTap()">
+              <span class="reaction-pad-icon" aria-hidden="true">🔥</span>
+              <span class="reaction-pad-text" id="reactionPadText">Tocca per iniziare</span>
+              <span class="reaction-pad-time" id="reactionPadTime"></span>
+            </button>
+            <div class="game-status" id="reactionStatus">Pronto a reagire.</div>
+          </div>
+
+          <div class="card game-card">
+            <div class="card-head">
+              <div>
+                <p class="eyebrow">Mini gioco</p>
+                <h2>Braci in Fuga</h2>
+              </div>
+            </div>
+            <p class="card-copy">15 secondi. Tocca più braci possibile prima che si spengano. Ogni click sbagliato costa.</p>
+            <div class="tapfire-grid" id="tapFireGrid" data-state="idle">
+              <button class="tapfire-cell" data-cell="0" type="button" onclick="handleTapFireCell(0)"></button>
+              <button class="tapfire-cell" data-cell="1" type="button" onclick="handleTapFireCell(1)"></button>
+              <button class="tapfire-cell" data-cell="2" type="button" onclick="handleTapFireCell(2)"></button>
+              <button class="tapfire-cell" data-cell="3" type="button" onclick="handleTapFireCell(3)"></button>
+              <button class="tapfire-cell" data-cell="4" type="button" onclick="handleTapFireCell(4)"></button>
+              <button class="tapfire-cell" data-cell="5" type="button" onclick="handleTapFireCell(5)"></button>
+              <button class="tapfire-cell" data-cell="6" type="button" onclick="handleTapFireCell(6)"></button>
+              <button class="tapfire-cell" data-cell="7" type="button" onclick="handleTapFireCell(7)"></button>
+              <button class="tapfire-cell" data-cell="8" type="button" onclick="handleTapFireCell(8)"></button>
+            </div>
+            <div class="tapfire-meta">
+              <span class="tapfire-score">Punti: <strong id="tapFireScore">0</strong></span>
+              <span class="tapfire-timer">⏱ <strong id="tapFireTimer">15</strong>s</span>
+            </div>
+            <div class="form-actions">
+              <button class="btn btn-primary" id="tapFireStartBtn" type="button" onclick="startTapFire()">Accendi la brace</button>
+            </div>
+            <div class="game-status" id="tapFireStatus">15 secondi, massima concentrazione.</div>
+          </div>
+
+          <div class="card game-card">
+            <div class="card-head">
+              <div>
+                <p class="eyebrow">Mini gioco</p>
+                <h2>Memoria Brace</h2>
+              </div>
+            </div>
+            <p class="card-copy">Memorizza la sequenza che lampeggia e ripetila. Ogni turno allunga la catena.</p>
+            <div class="memory-grid" id="memoryGrid">
+              <button class="memory-tile memory-tile-0" type="button" data-tile="0" onclick="handleMemoryTile(0)"><span aria-hidden="true">🥩</span></button>
+              <button class="memory-tile memory-tile-1" type="button" data-tile="1" onclick="handleMemoryTile(1)"><span aria-hidden="true">🌽</span></button>
+              <button class="memory-tile memory-tile-2" type="button" data-tile="2" onclick="handleMemoryTile(2)"><span aria-hidden="true">🍖</span></button>
+              <button class="memory-tile memory-tile-3" type="button" data-tile="3" onclick="handleMemoryTile(3)"><span aria-hidden="true">🌶️</span></button>
+            </div>
+            <div class="form-actions">
+              <button class="btn btn-primary" id="memoryStartBtn" type="button" onclick="startMemoryGame()">Inizia sequenza</button>
+            </div>
+            <div class="game-status" id="memoryStatus">Memorizza e ripeti.</div>
+          </div>
+        </div>
+
+        <div class="content-grid">
+          <div class="card game-card">
+            <div class="card-head">
+              <div>
+                <p class="eyebrow">Party mode</p>
+                <h2>Pesca una sfida BBQ</h2>
+              </div>
+            </div>
+
+            <p class="card-copy">Una sfida rapida per movimentare il gruppo. Viene condivisa su tutti i dispositivi.</p>
+            <div id="partyChallengeCard"></div>
+            <div class="form-actions">
+              <button class="btn btn-primary" type="button" onclick="drawPartyChallenge()">Pesca una sfida</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="content-grid">
+          <div class="card game-card">
+            <div class="card-head"><div><p class="eyebrow">Arcade 2D</p><h2>Salsiccia Jump 🌭</h2></div></div>
+            <p class="card-copy">Tocca la scena per saltare le braci. Ogni brace evitata è un punto.</p>
+            <div class="arcade-stage stage-sjump" id="sjumpStage" onclick="sjumpJump()" onkeydown="if(event.code==='Space'){event.preventDefault();sjumpJump();}">
+              <div class="sjump-ground"></div>
+              <div class="sjump-player" id="sjumpPlayer">🌭</div>
+              <div class="sjump-obstacles" id="sjumpObstacles"></div>
+              <div class="arcade-hud"><span id="sjumpScore">0</span> · Tocca per saltare</div>
+            </div>
+            <div class="form-actions">
+              <button class="btn btn-primary" id="sjumpStartBtn" type="button" onclick="startSausageJump()">Vai!</button>
+            </div>
+            <div class="game-status" id="sjumpStatus">Pronto a saltare?</div>
+          </div>
+
+          <div class="card game-card">
+            <div class="card-head"><div><p class="eyebrow">Arcade 2D</p><h2>Brace Catcher 🥩</h2></div></div>
+            <p class="card-copy">Cade carne. Tocca a sinistra/destra per spostare il piatto. 30 secondi.</p>
+            <div class="arcade-stage stage-catcher" id="catcherStage"
+                 onclick="catcherHandleStageTap(event)">
+              <div class="catcher-items" id="catcherItems"></div>
+              <div class="catcher-player" id="catcherPlayer">🍽️</div>
+              <div class="arcade-hud"><span id="catcherScore">0</span> · ⏱ <span id="catcherTimer">30</span>s</div>
+            </div>
+            <div class="form-actions">
+              <button class="btn btn-primary" id="catcherStartBtn" type="button" onclick="startBraceCatcher()">Apri il piatto</button>
+            </div>
+            <div class="game-status" id="catcherStatus">Pronto a parare?</div>
+          </div>
+        </div>
+
+        <div class="content-grid">
+          <div class="card game-card">
+            <div class="card-head"><div><p class="eyebrow">Arcade 2D</p><h2>Serpente alla Brace 🐍</h2></div></div>
+            <p class="card-copy">Mangia le braci, evita le pareti e te stesso. Tocca ai lati per cambiare direzione.</p>
+            <div class="arcade-stage stage-snake" id="snakeStage">
+              <div class="snake-grid" id="snakeGrid"></div>
+              <div class="snake-controls">
+                <button class="snake-btn" type="button" data-dir="up" onclick="snakeSetDir('up')">▲</button>
+                <button class="snake-btn" type="button" data-dir="left" onclick="snakeSetDir('left')">◀</button>
+                <button class="snake-btn" type="button" data-dir="down" onclick="snakeSetDir('down')">▼</button>
+                <button class="snake-btn" type="button" data-dir="right" onclick="snakeSetDir('right')">▶</button>
+              </div>
+              <div class="arcade-hud">Lunghezza: <span id="snakeScore">1</span></div>
+            </div>
+            <div class="form-actions">
+              <button class="btn btn-primary" id="snakeStartBtn" type="button" onclick="startSausageSnake()">Accendi il serpente</button>
+            </div>
+            <div class="game-status" id="snakeStatus">Pronto a strisciare?</div>
+          </div>
+
+          <div class="card game-card">
+            <div class="card-head"><div><p class="eyebrow">Arcade 2D</p><h2>Spiedino Stack 🍢</h2></div></div>
+            <p class="card-copy">Tocca per fissare ogni pezzo. Più preciso sei, più alto cresce lo spiedino.</p>
+            <div class="arcade-stage stage-stack" id="stackStage" onclick="stackDropBlock()">
+              <div class="stack-tower" id="stackTower"></div>
+              <div class="stack-current" id="stackCurrent"></div>
+              <div class="arcade-hud">Altezza: <span id="stackScore">0</span></div>
+            </div>
+            <div class="form-actions">
+              <button class="btn btn-primary" id="stackStartBtn" type="button" onclick="startSkewerStack()">Apparecchia</button>
+            </div>
+            <div class="game-status" id="stackStatus">Pronto a impilare?</div>
+          </div>
+        </div>
+
+        <div class="content-grid">
+          <div class="card game-card">
+            <div class="card-head"><div><p class="eyebrow">Arcade</p><h2>Scotti la Carne 🔨</h2></div></div>
+            <p class="card-copy">Whack-a-mole. I burger saltano fuori dalla griglia, colpiscili prima che si brucino. 20 secondi.</p>
+            <div class="whack-grid" id="whackGrid">
+              <button class="whack-cell" data-cell="0" type="button" onclick="whackHit(0)"></button>
+              <button class="whack-cell" data-cell="1" type="button" onclick="whackHit(1)"></button>
+              <button class="whack-cell" data-cell="2" type="button" onclick="whackHit(2)"></button>
+              <button class="whack-cell" data-cell="3" type="button" onclick="whackHit(3)"></button>
+              <button class="whack-cell" data-cell="4" type="button" onclick="whackHit(4)"></button>
+              <button class="whack-cell" data-cell="5" type="button" onclick="whackHit(5)"></button>
+              <button class="whack-cell" data-cell="6" type="button" onclick="whackHit(6)"></button>
+              <button class="whack-cell" data-cell="7" type="button" onclick="whackHit(7)"></button>
+              <button class="whack-cell" data-cell="8" type="button" onclick="whackHit(8)"></button>
+            </div>
+            <div class="arcade-hud">Punti: <span id="whackScore">0</span> · ⏱ <span id="whackTimer">20</span>s</div>
+            <div class="form-actions">
+              <button class="btn btn-primary" id="whackStartBtn" type="button" onclick="startWhackBurger()">Pronto con il martello</button>
+            </div>
+            <div class="game-status" id="whackStatus">Pronto a colpire?</div>
+          </div>
+
+          <div class="card game-card">
+            <div class="card-head"><div><p class="eyebrow">Precisione</p><h2>Pinza d'Oro 🎯</h2></div></div>
+            <p class="card-copy">5 round. Ferma il cursore nel cuore del target. Somma i punti.</p>
+            <div class="tong-lane-wrap">
+              <div class="tong-lane">
+                <div class="tong-target"></div>
+                <div class="tong-cursor" id="tongCursor"></div>
+              </div>
+            </div>
+            <div class="arcade-hud">Round <span id="tongRound">0</span>/5 · Punti: <span id="tongScore">0</span></div>
+            <div class="form-actions">
+              <button class="btn btn-secondary" id="tongStartBtn" type="button" onclick="startTongPrecision()">Avvia round</button>
+              <button class="btn btn-primary" id="tongLockBtn" type="button" onclick="tongLock()" disabled>Ferma</button>
+            </div>
+            <div class="game-status" id="tongStatus">Pronto a mirare?</div>
+          </div>
+        </div>
+
+        <div class="content-grid">
+          <div class="card game-card">
+            <div class="card-head"><div><p class="eyebrow">Memoria</p><h2>Marinatura Mixer 🃏</h2></div></div>
+            <p class="card-copy">Trova tutte le coppie di ingredienti nel minor tempo possibile.</p>
+            <div class="match-grid" id="matchGrid"></div>
+            <div class="arcade-hud">⏱ <span id="matchTimer">0,0</span>s · Coppie <span id="matchPairs">0/6</span></div>
+            <div class="form-actions">
+              <button class="btn btn-primary" id="matchStartBtn" type="button" onclick="startMarinadeMatch()">Mescola le carte</button>
+            </div>
+            <div class="game-status" id="matchStatus">Pronto a ricordare?</div>
+          </div>
+
+          <div class="card game-card">
+            <div class="card-head"><div><p class="eyebrow">Precisione</p><h2>Cottura a Puntino 🧑‍🍳</h2></div></div>
+            <p class="card-copy">Tieni premuto per <strong id="holdTarget">3,0</strong>s esatti. Troppo poco o troppo: penalità.</p>
+            <div class="hold-meter" id="holdMeter">
+              <div class="hold-scale">
+                <span>0s</span><span>1</span><span>2</span><span>3</span><span>4</span><span>5</span><span>6s</span>
+              </div>
+              <div class="hold-track">
+                <div class="hold-target-zone" id="holdTargetZone"></div>
+                <div class="hold-target-mark" id="holdTargetMark"></div>
+                <div class="hold-fill" id="holdFill"></div>
+                <div class="hold-time-label" id="holdTimeLabel">0,0s</div>
+              </div>
+            </div>
+            <button class="btn btn-primary hold-pad" id="holdPad" type="button"
+                    onpointerdown="holdStart()" onpointerup="holdEnd()" onpointercancel="holdEnd()" onpointerleave="holdEnd()">
+              Premi e tieni
+            </button>
+            <div class="hold-result" id="holdResult"></div>
+            <div class="game-status" id="holdStatus">Pronto a cuocere?</div>
+          </div>
+        </div>
+
+        <div class="content-grid">
+          <div class="card game-card">
+            <div class="card-head"><div><p class="eyebrow">Calcolo</p><h2>Calcola il Conto 🧮</h2></div></div>
+            <p class="card-copy">Risolvi il conto della serata il più velocemente possibile. 10 round.</p>
+            <div class="calc-question" id="calcQuestion">—</div>
+            <div class="calc-options" id="calcOptions"></div>
+            <div class="arcade-hud">Round <span id="calcRound">0</span>/10 · Giuste: <span id="calcCorrect">0</span></div>
+            <div class="form-actions">
+              <button class="btn btn-primary" id="calcStartBtn" type="button" onclick="startCalcCheck()">Inizia il conto</button>
+            </div>
+            <div class="game-status" id="calcStatus">Pronto a calcolare?</div>
+          </div>
+
+          <div class="card game-card">
+            <div class="card-head"><div><p class="eyebrow">Osservazione</p><h2>Conta le Salsicce 🔢</h2></div></div>
+            <p class="card-copy">Flash di 2s. Quante salsicce c'erano? 8 round.</p>
+            <div class="count-stage" id="countStage"></div>
+            <div class="count-options" id="countOptions"></div>
+            <div class="arcade-hud">Round <span id="countRound">0</span>/8 · Giuste: <span id="countCorrect">0</span></div>
+            <div class="form-actions">
+              <button class="btn btn-primary" id="countStartBtn" type="button" onclick="startCountSausage()">Guarda bene</button>
+            </div>
+            <div class="game-status" id="countStatus">Pronto a contare?</div>
+          </div>
+        </div>
+
+        <div class="content-grid">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <p class="eyebrow">Classifica</p>
+                <h2>Hall of Flame</h2>
+              </div>
+            </div>
+            <div id="gamesLeaderboard"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="tab-impostazioni" data-accent="impostazioni" role="tabpanel" hidden>
+        <div class="card identity-card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Profilo attivo</p>
+              <h2>Tu chi sei?</h2>
+            </div>
+            <div class="active-pill" id="activeIdentityPill">Nessun profilo</div>
+          </div>
+          <p class="card-copy">
+            Il profilo attivo viene usato per commenti, wishlist, chat, lista della spesa e mini giochi su questo dispositivo.
+          </p>
+          <div class="identity-switcher" id="identitySwitcher"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head">
+            <div>
+              <p class="eyebrow">Notifiche</p>
+              <h2>Push del gruppo</h2>
+            </div>
+          </div>
+          <div class="notifications-bar" id="notificationsBar">
+            <div class="notifications-info">
+              <span class="notifications-icon" aria-hidden="true">🔔</span>
+              <div>
+                <div class="notifications-title">Notifiche push</div>
+                <div class="notifications-meta" id="notificationsMeta">Ti avvisano quando il gruppo aggiunge spese, commenti o messaggi.</div>
+              </div>
+            </div>
+            <div class="notifications-actions">
+              <button class="notifications-toggle" id="notificationsToggle" type="button" role="switch" aria-checked="false" aria-label="Attiva notifiche push">
+                <span class="notifications-toggle-track"></span>
+                <span class="notifications-toggle-thumb"></span>
+              </button>
+              <button class="ghost-btn notifications-install-btn" type="button" onclick="openInstallGuide()" aria-label="Come installare l'app sul cellulare">
+                Come si installa?
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="content-grid">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <p class="eyebrow">Sicurezza</p>
+                <h2>Backup e ripristino</h2>
+              </div>
+            </div>
+
+            <p class="card-copy">Lo stato viene salvato sul server. Usa i backup per snapshot espliciti prima di cambiare molto.</p>
+
+            <form class="stack-form" onsubmit="event.preventDefault(); createBackup();">
+              <label class="field">
+                <span>Descrizione backup</span>
+                <input type="text" id="backupDescInput" placeholder="Es. Prima del mega acquisto di carne" autocapitalize="sentences" enterkeyhint="done">
+              </label>
+              <div class="form-actions">
+                <button class="btn btn-primary" type="submit">Crea backup</button>
+              </div>
+            </form>
+
+            <div id="backupsList"></div>
+          </div>
+
+          <div class="card danger-card">
+            <div class="card-head">
+              <div>
+                <p class="eyebrow">Danger zone</p>
+                <h2>Azioni irreversibili</h2>
+              </div>
+            </div>
+            <p class="card-copy">Il reset crea un backup automatico, ma resta comunque un'azione forte. Meglio tenerla lontana dai flussi normali.</p>
+            <div class="form-actions">
+              <button class="btn btn-danger" type="button" onclick="resetAll()">Reset completo</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="tab-panel" id="tab-dev" data-accent="dev" role="tabpanel" hidden>
+        <div class="card builder-card">
             <div class="card-head">
               <div>
                 <p class="eyebrow">Sviluppo</p>
@@ -453,9 +768,75 @@
               </div>
             </div>
           </div>
-        </div>
       </section>
     </main>
+  </div>
+
+  <button class="fab" id="fabQuickExpense" type="button" aria-label="Aggiungi una spesa rapida" onclick="openQuickExpense()">
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <line x1="12" y1="5" x2="12" y2="19"/>
+      <line x1="5" y1="12" x2="19" y2="12"/>
+    </svg>
+  </button>
+
+  <nav class="bottom-nav" id="bottomNav" aria-label="Navigazione principale" role="tablist">
+    <button class="bottom-nav-item active" data-dest="home" type="button" aria-label="Home">
+      <span class="bottom-nav-icon" aria-hidden="true">🏠</span>
+      <span class="bottom-nav-label">Home</span>
+    </button>
+    <button class="bottom-nav-item" data-dest="spese" type="button" aria-label="Spese">
+      <span class="bottom-nav-icon" aria-hidden="true">🍖</span>
+      <span class="bottom-nav-label">Spese</span>
+    </button>
+    <button class="bottom-nav-item" data-dest="chat" type="button" aria-label="Chat">
+      <span class="bottom-nav-icon" aria-hidden="true">💬</span>
+      <span class="bottom-nav-label">Chat</span>
+    </button>
+    <button class="bottom-nav-item" data-dest="lista" type="button" aria-label="Lista della spesa">
+      <span class="bottom-nav-icon" aria-hidden="true">📝</span>
+      <span class="bottom-nav-label">Lista</span>
+    </button>
+    <button class="bottom-nav-item" data-dest="altro" type="button" aria-label="Altre sezioni" aria-haspopup="dialog">
+      <span class="bottom-nav-icon" aria-hidden="true">⋯</span>
+      <span class="bottom-nav-label">Altro</span>
+    </button>
+  </nav>
+
+  <div class="sheet-overlay" id="moreSheetOverlay" hidden>
+    <div class="sheet" role="dialog" aria-labelledby="moreSheetTitle" aria-modal="true">
+      <div class="sheet-handle" aria-hidden="true"></div>
+      <div class="sheet-header">
+        <h2 id="moreSheetTitle">Altre sezioni</h2>
+        <button class="ghost-btn" type="button" onclick="closeMoreSheet()" aria-label="Chiudi menù">Chiudi</button>
+      </div>
+      <div class="sheet-grid">
+        <button class="sheet-item" data-dest="regolamento" type="button">
+          <span class="sheet-item-icon" aria-hidden="true">⚖️</span>
+          <span class="sheet-item-label">Conti</span>
+          <span class="sheet-item-meta">Regolamento &amp; saldi</span>
+        </button>
+        <button class="sheet-item" data-dest="wishlist" type="button">
+          <span class="sheet-item-icon" aria-hidden="true">🎁</span>
+          <span class="sheet-item-label">Wishlist</span>
+          <span class="sheet-item-meta">Chi porta cosa</span>
+        </button>
+        <button class="sheet-item" data-dest="gruppo" type="button">
+          <span class="sheet-item-icon" aria-hidden="true">👥</span>
+          <span class="sheet-item-label">Gruppo</span>
+          <span class="sheet-item-meta">Partecipanti</span>
+        </button>
+        <button class="sheet-item" data-dest="giochi" type="button">
+          <span class="sheet-item-icon" aria-hidden="true">🎲</span>
+          <span class="sheet-item-label">Giochi</span>
+          <span class="sheet-item-meta">Quiz, griglia &amp; sfide</span>
+        </button>
+        <button class="sheet-item" data-dest="impostazioni" type="button">
+          <span class="sheet-item-icon" aria-hidden="true">⚙️</span>
+          <span class="sheet-item-label">Impostazioni</span>
+          <span class="sheet-item-meta">Profilo, notifiche, backup</span>
+        </button>
+      </div>
+    </div>
   </div>
 
   <div class="toast-region" id="toastRegion" aria-live="polite" aria-atomic="true"></div>

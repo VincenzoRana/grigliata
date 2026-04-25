@@ -3,6 +3,7 @@ const http = require('http');
 const path = require('path');
 const fs = require('fs');
 const Database = require('better-sqlite3');
+const webpush = require('web-push');
 
 const PORT = Number(process.env.PORT || 3000);
 const SERVERS_TOOL_PORT = 3004;
@@ -15,6 +16,7 @@ const DATA_DIR = process.env.GRIGLIATA_DATA_DIR
   : path.join(XDG_DATA_HOME, APP_NAME);
 const DB_PATH = path.join(DATA_DIR, 'grigliata.db');
 const RECOVERY_DIR = path.join(DATA_DIR, 'recovery');
+const VAPID_PATH = path.join(DATA_DIR, 'vapid.json');
 const MAX_BACKUPS = 250;
 
 function ensureDir(dirPath) {
@@ -71,7 +73,26 @@ db.exec(`
     description TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+
+  CREATE TABLE IF NOT EXISTS push_subscriptions (
+    endpoint TEXT PRIMARY KEY,
+    keys TEXT NOT NULL,
+    sender_id TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
+
+// ── VAPID keys (generated once, persisted to disk) ──
+function loadOrCreateVapidKeys() {
+  if (fs.existsSync(VAPID_PATH)) {
+    try { return JSON.parse(fs.readFileSync(VAPID_PATH, 'utf8')); } catch {}
+  }
+  const keys = webpush.generateVAPIDKeys();
+  fs.writeFileSync(VAPID_PATH, JSON.stringify(keys, null, 2), { mode: 0o600 });
+  return keys;
+}
+const vapid = loadOrCreateVapidKeys();
+webpush.setVapidDetails('mailto:admin@grigliata.vincenzo-rana.it', vapid.publicKey, vapid.privateKey);
 
 // Insert default row if empty
 const row = db.prepare('SELECT id FROM app_state WHERE id = 1').get();
@@ -159,6 +180,102 @@ app.post('/api/backups/:id/restore', (req, res) => {
 app.delete('/api/backups/:id', (req, res) => {
   db.prepare('DELETE FROM backups WHERE id = ?').run(req.params.id);
   res.json({ ok: true });
+});
+
+// ── Push notifications API ──
+
+app.get('/api/push/public-key', (_req, res) => {
+  res.json({ publicKey: vapid.publicKey });
+});
+
+app.post('/api/push/subscribe', (req, res) => {
+  const { subscription, label, participantId } = req.body || {};
+  if (!subscription || !subscription.endpoint || !subscription.keys) {
+    return res.status(400).json({ error: 'Invalid subscription' });
+  }
+  const isNew = !db.prepare('SELECT 1 FROM push_subscriptions WHERE endpoint = ?').get(subscription.endpoint);
+  const senderTag = participantId ? `pid:${participantId}` : (label || null);
+  db.prepare(`
+    INSERT INTO push_subscriptions (endpoint, keys, sender_id)
+    VALUES (?, ?, ?)
+    ON CONFLICT(endpoint) DO UPDATE SET keys = excluded.keys, sender_id = excluded.sender_id
+  `).run(subscription.endpoint, JSON.stringify(subscription.keys), senderTag);
+
+  // Scherzo dedicato a Pillo: welcome push quando attiva le notifiche
+  if (isNew && label && /pillo/i.test(label)) {
+    const payload = JSON.stringify({
+      title: 'Le notifiche esistono, Pillo 🐧',
+      body: '«No, non ci sono le notifiche su quell\'app, dovresti inserirle ma chissà quanto tempo ci vuole…» — tu, qualche giorno fa. Eccole. Non hai più scuse per non leggere la chat.',
+      tag: 'pillo-welcome',
+      url: '/',
+    });
+    webpush.sendNotification(
+      { endpoint: subscription.endpoint, keys: subscription.keys },
+      payload
+    ).catch(err => console.warn('Pillo welcome push failed:', err.message));
+  }
+
+  res.json({ ok: true });
+});
+
+app.post('/api/push/unsubscribe', (req, res) => {
+  const { endpoint } = req.body || {};
+  if (!endpoint) return res.status(400).json({ error: 'Missing endpoint' });
+  db.prepare('DELETE FROM push_subscriptions WHERE endpoint = ?').run(endpoint);
+  res.json({ ok: true });
+});
+
+app.post('/api/push/update-participant', (req, res) => {
+  const { endpoint, participantId } = req.body || {};
+  if (!endpoint) return res.status(400).json({ error: 'Missing endpoint' });
+  const senderTag = participantId ? `pid:${participantId}` : null;
+  const result = db.prepare('UPDATE push_subscriptions SET sender_id = ? WHERE endpoint = ?')
+    .run(senderTag, endpoint);
+  res.json({ ok: true, updated: result.changes });
+});
+
+app.get('/api/push/active-participants', (_req, res) => {
+  const rows = db.prepare(`
+    SELECT DISTINCT sender_id FROM push_subscriptions
+    WHERE sender_id LIKE 'pid:%'
+  `).all();
+  const participantIds = rows.map(r => r.sender_id.slice(4));
+  res.json({ participantIds });
+});
+
+app.post('/api/push/notify', async (req, res) => {
+  const { title, body, tag, excludeEndpoint, url } = req.body || {};
+  if (!title || !body) return res.status(400).json({ error: 'Missing title or body' });
+
+  const rows = excludeEndpoint
+    ? db.prepare('SELECT endpoint, keys FROM push_subscriptions WHERE endpoint != ?').all(excludeEndpoint)
+    : db.prepare('SELECT endpoint, keys FROM push_subscriptions').all();
+
+  const payload = JSON.stringify({
+    title: String(title).slice(0, 120),
+    body: String(body).slice(0, 240),
+    tag: tag || 'grigliata',
+    url: url || '/',
+  });
+
+  const results = await Promise.allSettled(rows.map(row => {
+    const sub = { endpoint: row.endpoint, keys: JSON.parse(row.keys) };
+    return webpush.sendNotification(sub, payload);
+  }));
+
+  // Clean up expired subscriptions (410 Gone / 404 Not Found)
+  const stale = [];
+  results.forEach((r, i) => {
+    if (r.status === 'rejected' && r.reason && (r.reason.statusCode === 410 || r.reason.statusCode === 404)) {
+      stale.push(rows[i].endpoint);
+    }
+  });
+  if (stale.length) {
+    const placeholders = stale.map(() => '?').join(',');
+    db.prepare(`DELETE FROM push_subscriptions WHERE endpoint IN (${placeholders})`).run(...stale);
+  }
+
+  res.json({ sent: results.filter(r => r.status === 'fulfilled').length, total: rows.length, stale: stale.length });
 });
 
 // ── Proxy builder API requests to servers-tool ──

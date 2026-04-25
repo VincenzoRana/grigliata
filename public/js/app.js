@@ -92,6 +92,8 @@ const PARTY_CHALLENGES = [
 
 const LOCAL_KEYS = {
   activeParticipantId: "grigliata.activeParticipantId",
+  section: "grigliata.section",
+  // Legacy (still read for migration):
   primaryTab: "grigliata.primaryTab",
   orgTab: "grigliata.orgTab"
 };
@@ -121,7 +123,21 @@ const DEFAULT_STATE = {
   games: {
     grillMaster: { statsByPlayer: {} },
     bbqQuiz: { statsByPlayer: {} },
-    partyChallenges: { current: null, drawsByPlayer: {} }
+    partyChallenges: { current: null, drawsByPlayer: {} },
+    reactionFlame: { statsByPlayer: {} },
+    memoryFlame: { statsByPlayer: {} },
+    tapFire: { statsByPlayer: {} },
+    sausageJump: { statsByPlayer: {} },
+    braceCatcher: { statsByPlayer: {} },
+    sausageSnake: { statsByPlayer: {} },
+    skewerStack: { statsByPlayer: {} },
+    whackBurger: { statsByPlayer: {} },
+    tongPrecision: { statsByPlayer: {} },
+    marinadeMatch: { statsByPlayer: {} },
+    holdCook: { statsByPlayer: {} },
+    calcCheck: { statsByPlayer: {} },
+    countSausage: { statsByPlayer: {} },
+    reactions: {}
   },
   nextId: 10
 };
@@ -131,10 +147,14 @@ let stateVersion = 0;
 let saveTimeout = null;
 let isSaving = false;
 let isLoading = false;
-let activePrimaryTab = "spese";
+let activeSection = "home";
+// Legacy aliases kept until all references are migrated:
+let activePrimaryTab = "home";
 let activeOrgTab = "wishlist";
+const SECTIONS = ["home", "spese", "regolamento", "lista", "chat", "wishlist", "gruppo", "giochi", "impostazioni", "dev"];
 let activeBalanceView = "person";
 let activeParticipantId = null;
+let profileSelectionPromptOpen = false;
 let expandedExpenseId = null;
 let emojiPickerTarget = null;
 let emojiPickerIsCouple = false;
@@ -153,6 +173,32 @@ const quizState = {
   selectedIndex: null,
   locked: false,
   feedback: ""
+};
+
+const reactionGame = {
+  phase: "idle", // idle | waiting | ready | done
+  startTime: 0,
+  reactionMs: 0,
+  timeoutId: null,
+  lastResult: null, // "ok" | "false-start" | null
+};
+
+const memoryGame = {
+  sequence: [],
+  userInput: [],
+  phase: "idle", // idle | showing | input | failed | success
+  timeoutIds: [],
+};
+
+const tapFireGame = {
+  phase: "idle", // idle | playing | done
+  score: 0,
+  timeLeft: 0,
+  activeCell: -1,
+  tickIntervalId: null,
+  flameIntervalId: null,
+  endTimeoutId: null,
+  startedAt: 0,
 };
 
 function cloneDefaultState() {
@@ -213,7 +259,8 @@ function normalizeState(serverState) {
         id: message.id || `legacy_chat_${index}`,
         authorId: message.authorId || null,
         text: typeof message.text === "string" ? message.text : "",
-        timestamp: Number(message.timestamp) || Date.now()
+        timestamp: Number(message.timestamp) || Date.now(),
+        reactions: message.reactions && typeof message.reactions === "object" ? message.reactions : {}
       })).filter(message => message.text.trim())
     : [];
 
@@ -263,7 +310,35 @@ function normalizeState(serverState) {
       drawsByPlayer: games.partyChallenges && typeof games.partyChallenges.drawsByPlayer === "object"
         ? games.partyChallenges.drawsByPlayer
         : {}
-    }
+    },
+    reactionFlame: {
+      statsByPlayer: games.reactionFlame && typeof games.reactionFlame.statsByPlayer === "object"
+        ? games.reactionFlame.statsByPlayer
+        : {}
+    },
+    memoryFlame: {
+      statsByPlayer: games.memoryFlame && typeof games.memoryFlame.statsByPlayer === "object"
+        ? games.memoryFlame.statsByPlayer
+        : {}
+    },
+    tapFire: {
+      statsByPlayer: games.tapFire && typeof games.tapFire.statsByPlayer === "object"
+        ? games.tapFire.statsByPlayer
+        : {}
+    },
+    sausageJump:   { statsByPlayer: (games.sausageJump   && typeof games.sausageJump.statsByPlayer   === "object") ? games.sausageJump.statsByPlayer   : {} },
+    braceCatcher:  { statsByPlayer: (games.braceCatcher  && typeof games.braceCatcher.statsByPlayer  === "object") ? games.braceCatcher.statsByPlayer  : {} },
+    sausageSnake:  { statsByPlayer: (games.sausageSnake  && typeof games.sausageSnake.statsByPlayer  === "object") ? games.sausageSnake.statsByPlayer  : {} },
+    skewerStack:   { statsByPlayer: (games.skewerStack   && typeof games.skewerStack.statsByPlayer   === "object") ? games.skewerStack.statsByPlayer   : {} },
+    whackBurger:   { statsByPlayer: (games.whackBurger   && typeof games.whackBurger.statsByPlayer   === "object") ? games.whackBurger.statsByPlayer   : {} },
+    tongPrecision: { statsByPlayer: (games.tongPrecision && typeof games.tongPrecision.statsByPlayer === "object") ? games.tongPrecision.statsByPlayer : {} },
+    marinadeMatch: { statsByPlayer: (games.marinadeMatch && typeof games.marinadeMatch.statsByPlayer === "object") ? games.marinadeMatch.statsByPlayer : {} },
+    holdCook:      { statsByPlayer: (games.holdCook      && typeof games.holdCook.statsByPlayer      === "object") ? games.holdCook.statsByPlayer      : {} },
+    calcCheck:     { statsByPlayer: (games.calcCheck     && typeof games.calcCheck.statsByPlayer     === "object") ? games.calcCheck.statsByPlayer     : {} },
+    countSausage:  { statsByPlayer: (games.countSausage  && typeof games.countSausage.statsByPlayer  === "object") ? games.countSausage.statsByPlayer  : {} },
+    reactions: games.reactions && typeof games.reactions === "object"
+      ? games.reactions
+      : {}
   };
 
   next.nextId = Number(serverState.nextId) > 0 ? Number(serverState.nextId) : next.nextId;
@@ -271,11 +346,27 @@ function normalizeState(serverState) {
 }
 
 function loadPreferences() {
-  const storedPrimary = localStorage.getItem(LOCAL_KEYS.primaryTab);
-  const storedOrg = localStorage.getItem(LOCAL_KEYS.orgTab);
-  activePrimaryTab = ["spese", "regolamento", "organizzazione"].includes(storedPrimary) ? storedPrimary : "spese";
-  activeOrgTab = ["wishlist", "lista", "chat", "gruppo", "giochi", "admin"].includes(storedOrg) ? storedOrg : "wishlist";
+  const storedSection = localStorage.getItem(LOCAL_KEYS.section);
+  if (storedSection && SECTIONS.includes(storedSection)) {
+    activeSection = storedSection;
+  } else {
+    // Migrate from legacy keys
+    const legacyPrimary = localStorage.getItem(LOCAL_KEYS.primaryTab);
+    const legacyOrg = localStorage.getItem(LOCAL_KEYS.orgTab);
+    if (legacyPrimary === "spese" || legacyPrimary === "regolamento") {
+      activeSection = legacyPrimary;
+    } else if (legacyPrimary === "organizzazione" && legacyOrg) {
+      activeSection = legacyOrg === "admin" ? "impostazioni" : legacyOrg;
+    } else {
+      activeSection = "home";
+    }
+  }
+  activePrimaryTab = activeSection;
   activeParticipantId = localStorage.getItem(LOCAL_KEYS.activeParticipantId);
+}
+
+function persistActiveSection() {
+  localStorage.setItem(LOCAL_KEYS.section, activeSection);
 }
 
 function persistActiveParticipant() {
@@ -284,8 +375,8 @@ function persistActiveParticipant() {
 }
 
 function ensureActiveParticipant() {
-  const exists = state.participants.some(p => p.id === activeParticipantId);
-  if (!exists) activeParticipantId = state.participants[0]?.id || null;
+  const exists = activeParticipantId && state.participants.some(p => p.id === activeParticipantId);
+  if (!exists) activeParticipantId = null;
   persistActiveParticipant();
 }
 
@@ -343,12 +434,30 @@ function genId() {
 
 async function loadStateFromServer() {
   try {
+    const prior = state ? JSON.parse(JSON.stringify(state)) : null;
     const res = await fetch("/api/state");
     if (!res.ok) throw new Error("Failed to load state");
     const payload = await res.json();
     stateVersion = payload.version;
     state = normalizeState(payload.state);
     ensureActiveParticipant();
+
+    let mustReSave = false;
+    // Protect chat against last-writer-wins races
+    if (prior && prior.chatMessages && prior.chatMessages.length) {
+      const serverIds = new Set(state.chatMessages.map(m => m.id));
+      const orphans = prior.chatMessages.filter(m => m && m.id && !serverIds.has(m.id));
+      if (orphans.length) {
+        state.chatMessages = [...state.chatMessages, ...orphans]
+          .sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+        mustReSave = true;
+      }
+    }
+    // Protect game stats: merge per-player records, keeping the best of both sides.
+    if (prior && prior.games) {
+      if (mergeGameStats(prior.games, state.games)) mustReSave = true;
+    }
+    if (mustReSave) scheduleSave();
     return true;
   } catch (error) {
     console.warn("Failed to load from server, using defaults:", error);
@@ -356,6 +465,84 @@ async function loadStateFromServer() {
     ensureActiveParticipant();
     return false;
   }
+}
+
+// Merges game stats from `local` (prior local state) into `server` (state just
+// loaded from server), keeping the best of both sides per-player per-field.
+// Returns true if the merge introduced changes we need to re-save.
+function mergeGameStats(local, server) {
+  let dirty = false;
+  const pickMax = (a, b) => Math.max(Number(a) || 0, Number(b) || 0);
+  // Lower is better; 0 is considered "no record yet".
+  const pickMinNonZero = (a, b) => {
+    const la = Number(a) || 0, lb = Number(b) || 0;
+    if (la && lb) return Math.min(la, lb);
+    return la || lb;
+  };
+
+  const mergeMap = (localMap, serverMap, fields, minFields = []) => {
+    const ids = new Set([...Object.keys(localMap || {}), ...Object.keys(serverMap || {})]);
+    for (const id of ids) {
+      const l = (localMap && localMap[id]) || {};
+      const s = (serverMap && serverMap[id]) || {};
+      if (!serverMap[id]) serverMap[id] = {};
+      for (const f of fields) {
+        const merged = pickMax(l[f], s[f]);
+        if (merged !== (Number(s[f]) || 0)) dirty = true;
+        serverMap[id][f] = merged;
+      }
+      for (const f of minFields) {
+        const merged = pickMinNonZero(l[f], s[f]);
+        if (merged !== (Number(s[f]) || 0)) dirty = true;
+        serverMap[id][f] = merged;
+      }
+    }
+  };
+
+  // Grill Master: all fields are "higher is better"
+  mergeMap(local.grillMaster?.statsByPlayer, server.grillMaster.statsByPlayer,
+    ["best", "plays", "perfects"]);
+  // Quiz: counters and bestStreak; currentStreak kept from server
+  mergeMap(local.bbqQuiz?.statsByPlayer, server.bbqQuiz.statsByPlayer,
+    ["correct", "answered", "bestStreak"]);
+  // Reaction: lower is better for "best"; plays and falseStarts are counters
+  mergeMap(local.reactionFlame?.statsByPlayer, server.reactionFlame.statsByPlayer,
+    ["plays", "falseStarts"], ["best"]);
+  // Memory: higher is better
+  mergeMap(local.memoryFlame?.statsByPlayer, server.memoryFlame.statsByPlayer,
+    ["best", "plays"]);
+  // Tap Fire: higher is better
+  if (server.tapFire) {
+    mergeMap(local.tapFire?.statsByPlayer, server.tapFire.statsByPlayer,
+      ["best", "plays"]);
+  }
+  // New games (higher is better by default)
+  const higherIsBetter = ["sausageJump", "braceCatcher", "sausageSnake", "skewerStack",
+                          "whackBurger", "tongPrecision", "holdCook", "calcCheck", "countSausage"];
+  for (const key of higherIsBetter) {
+    if (server[key]) mergeMap(local[key]?.statsByPlayer, server[key].statsByPlayer, ["best", "plays"]);
+  }
+  // Marinade Match: lower is better (time to finish)
+  if (server.marinadeMatch) {
+    mergeMap(local.marinadeMatch?.statsByPlayer, server.marinadeMatch.statsByPlayer,
+      ["plays"], ["best"]);
+  }
+  // Party challenges: scalar count per player (take max)
+  {
+    const ids = new Set([
+      ...Object.keys(local.partyChallenges?.drawsByPlayer || {}),
+      ...Object.keys(server.partyChallenges.drawsByPlayer || {}),
+    ]);
+    for (const id of ids) {
+      const merged = pickMax(
+        local.partyChallenges?.drawsByPlayer?.[id],
+        server.partyChallenges.drawsByPlayer[id]
+      );
+      if (merged !== (Number(server.partyChallenges.drawsByPlayer[id]) || 0)) dirty = true;
+      server.partyChallenges.drawsByPlayer[id] = merged;
+    }
+  }
+  return dirty;
 }
 
 async function saveStateToServer() {
@@ -382,25 +569,52 @@ function scheduleSave() {
   saveTimeout = setTimeout(() => saveStateToServer(), 280);
 }
 
+async function flushSave() {
+  if (saveTimeout) clearTimeout(saveTimeout);
+  saveTimeout = null;
+  await saveStateToServer();
+}
+
 async function pollForChanges() {
   if (isLoading || isSaving) return;
+
+  // Flush any pending local changes BEFORE checking remote — otherwise a
+  // poll+load could overwrite unsaved local state (e.g. a chat message
+  // typed in the last 280ms).
+  if (saveTimeout) {
+    clearTimeout(saveTimeout);
+    saveTimeout = null;
+    await saveStateToServer();
+  }
+
   try {
     const res = await fetch("/api/state/version");
     if (!res.ok) return;
     const payload = await res.json();
     if (payload.version > stateVersion) {
+      showSyncIndicator(true);
       isLoading = true;
       await loadStateFromServer();
       isLoading = false;
       renderAll();
-      if (activePrimaryTab === "organizzazione" && activeOrgTab === "admin") {
-        renderBackups();
-      }
-      showToast("Dati aggiornati", "Ho ricaricato le ultime modifiche arrivate da un altro dispositivo.", "warning");
+      if (activeSection === "impostazioni") renderBackups();
+      showSyncIndicator(false);
     }
   } catch {
-    // Ignore polling failures.
+    showSyncIndicator(false);
   }
+}
+
+function showSyncIndicator(on) {
+  let el = document.getElementById("syncIndicator");
+  if (!el) {
+    el = document.createElement("div");
+    el.id = "syncIndicator";
+    el.className = "sync-indicator";
+    el.innerHTML = '<span class="sync-spinner" aria-hidden="true"></span>';
+    document.body.appendChild(el);
+  }
+  el.classList.toggle("visible", on);
 }
 
 function getPersonExpenses(personId) {
@@ -586,32 +800,29 @@ function setupArrowKeyNavigation(container, itemSelector, onActivate) {
   });
 }
 
-function setPrimaryTab(tabName) {
-  activePrimaryTab = tabName;
-  localStorage.setItem(LOCAL_KEYS.primaryTab, activePrimaryTab);
+function setSection(name) {
+  if (!SECTIONS.includes(name)) return;
+  activeSection = name;
+  activePrimaryTab = name; // legacy alias
+  persistActiveSection();
   renderTabVisibility();
-  scrollControlIntoView(document.querySelector(`.primary-tab[data-tab="${activePrimaryTab}"]`));
-  if (activePrimaryTab === "organizzazione" && activeOrgTab === "admin") {
-    renderBackups();
-  }
+  scrollControlIntoView(document.querySelector(`.primary-tab[data-section="${activeSection}"]`));
+  if (activeSection === "impostazioni") renderBackups();
+  document.body.dataset.section = activeSection;
+  if (typeof updateBottomNavActive === "function") updateBottomNavActive();
+  if (typeof renderHome === "function" && activeSection === "home") renderHome();
 }
 
-function setOrgTab(tabName) {
-  activeOrgTab = tabName;
-  localStorage.setItem(LOCAL_KEYS.orgTab, activeOrgTab);
-  renderTabVisibility();
-  scrollControlIntoView(document.querySelector(`.sub-tab[data-org-tab="${activeOrgTab}"]`));
-  if (activePrimaryTab === "organizzazione" && activeOrgTab === "admin") {
-    renderBackups();
-  }
-}
+// Legacy aliases (for old callers still using these)
+function setPrimaryTab(tabName) { setSection(tabName); }
+function setOrgTab(tabName) { setSection(tabName); }
 
 function renderTabVisibility() {
   document.querySelectorAll(".primary-tab").forEach(button => {
-    setTabButtonState(button, button.dataset.tab === activePrimaryTab);
+    setTabButtonState(button, button.dataset.section === activeSection);
   });
   document.querySelectorAll(".tab-panel").forEach(panel => {
-    setPanelState(panel, panel.id === `tab-${activePrimaryTab}`);
+    setPanelState(panel, panel.id === `tab-${activeSection}`);
   });
 
   document.querySelectorAll(".sub-tab").forEach(button => {
@@ -631,7 +842,8 @@ function renderTabVisibility() {
 function renderAll() {
   ensureActiveParticipant();
   renderTabVisibility();
-  renderHero();
+  renderIdentity();
+  renderHome();
   renderExpenseForm();
   renderSpendingLeaderboard();
   renderExpenses();
@@ -642,41 +854,178 @@ function renderAll() {
   renderGroupSummary();
   renderParticipants();
   renderGames();
+  openProfileSelectionPrompt();
 }
 
-function renderHero() {
-  const heroStats = document.getElementById("heroStats");
-  const wishlistStats = getWishlistStats();
-  const transactions = calculateSettlements();
-  heroStats.innerHTML = [
-    renderStatCard(formatMoney(getTotalExpenses()), "Totale spese"),
-    renderStatCard(formatMoney(getPerPersonShare()), "Quota a testa"),
-    renderStatCard(String(transactions.length), "Trasferimenti minimi"),
-    renderStatCard(`${wishlistStats.coverage}%`, "Wishlist coperta")
-  ].join("");
-
+function renderIdentity() {
   const identitySwitcher = document.getElementById("identitySwitcher");
   const activePerson = getActiveParticipant();
-  document.getElementById("activeIdentityPill").textContent = activePerson
-    ? `${activePerson.avatar} ${activePerson.name}`
-    : "Aggiungi il gruppo";
+  const pill = document.getElementById("activeIdentityPill");
+  if (pill) {
+    pill.textContent = activePerson
+      ? `${activePerson.avatar} ${activePerson.name}`
+      : "Seleziona un profilo";
+  }
 
+  if (!identitySwitcher) return;
   if (state.participants.length === 0) {
     identitySwitcher.innerHTML = `<div class="empty-state"><strong>Nessun partecipante.</strong><br>Aggiungi prima il gruppo per sbloccare profili, commenti e giochi.</div>`;
   } else {
     identitySwitcher.innerHTML = state.participants.map(participant => `
-      <button class="identity-chip ${participant.id === activeParticipantId ? "active" : ""}" type="button" onclick="setActiveParticipant('${participant.id}')">
+      <button class="identity-chip ${participant.id === activeParticipantId ? "active" : ""}" type="button" data-participant-id="${participant.id}" onclick="setActiveParticipant('${participant.id}')">
         <span class="avatar">${participant.avatar}</span>
         <span>${escapeHtml(participant.name)}</span>
+        <span class="push-badge" aria-hidden="true" title="App installata con notifiche attive"></span>
       </button>
     `).join("");
+    if (typeof renderIdentityBadges === "function") renderIdentityBadges();
+  }
+}
+
+function renderHome() {
+  const activePerson = getActiveParticipant();
+  const wishlistStats = getWishlistStats();
+  const transactions = calculateSettlements();
+
+  // Greeting
+  const greetingAvatar = document.getElementById("dashboardGreetingAvatar");
+  const greetingName = document.getElementById("dashboardGreetingName");
+  const greetingSub = document.getElementById("dashboardGreetingSub");
+  if (greetingAvatar) greetingAvatar.textContent = activePerson ? activePerson.avatar : "👤";
+  if (greetingName) greetingName.textContent = activePerson ? activePerson.name : "Partecipante";
+  if (greetingSub) {
+    const n = state.participants.length;
+    greetingSub.textContent = activePerson
+      ? `Gruppo di ${n} ${n === 1 ? "persona" : "persone"} · stai segnando tutto come ${activePerson.avatar} ${activePerson.name}.`
+      : "Seleziona il tuo profilo per iniziare a segnare le spese.";
   }
 
-  const activeLabel = activePerson ? `${activePerson.avatar} ${activePerson.name}` : "Seleziona un profilo";
-  setText("wishlistIdentityPill", activePerson ? `Richiesta da ${activeLabel}` : "Richiede un profilo");
-  setText("shoppingIdentityPill", activePerson ? `Aggiungi come ${activeLabel}` : "Richiede un profilo");
-  setText("chatIdentityPill", activePerson ? `Scrivi come ${activeLabel}` : "Richiede un profilo");
-  setText("gamesIdentityPill", activePerson ? `Gioca come ${activeLabel}` : "Richiede un profilo");
+  // Stats
+  const statsEl = document.getElementById("dashboardStats");
+  if (statsEl) {
+    statsEl.innerHTML = [
+      renderStatCard(formatMoney(getTotalExpenses()), "Totale spese"),
+      renderStatCard(formatMoney(getPerPersonShare()), "Quota a testa"),
+      renderStatCard(String(transactions.length), "Trasferimenti minimi"),
+      renderStatCard(`${wishlistStats.coverage}%`, "Wishlist coperta"),
+    ].join("");
+  }
+
+  // Personal balance
+  const balEl = document.getElementById("dashboardPersonalBalance");
+  const balTitle = document.getElementById("dashboardPersonalBalanceTitle");
+  const balCard = document.getElementById("dashboardPersonalBalanceCard");
+  if (balEl && balTitle && balCard) {
+    if (!activePerson) {
+      balCard.hidden = true;
+    } else {
+      balCard.hidden = false;
+      const paid = getPersonTotal(activePerson.id);
+      const share = getPerPersonShare();
+      const balance = paid - share;
+      let tone = "neutral";
+      let title = "Sei in pari";
+      let body = `Hai anticipato <strong>${formatMoney(paid)}</strong> · Quota <strong>${formatMoney(share)}</strong>. Sei in pari, bravo.`;
+      if (balance > 0.01) {
+        tone = "positive";
+        title = `Devi ricevere ${formatMoney(balance)}`;
+        body = `Hai anticipato <strong>${formatMoney(paid)}</strong> · Quota <strong>${formatMoney(share)}</strong>. Il gruppo ti deve <strong>${formatMoney(balance)}</strong>.`;
+      } else if (balance < -0.01) {
+        tone = "negative";
+        title = `Devi dare ${formatMoney(Math.abs(balance))}`;
+        body = `Hai anticipato <strong>${formatMoney(paid)}</strong> · Quota <strong>${formatMoney(share)}</strong>. Devi ancora tirar fuori <strong>${formatMoney(Math.abs(balance))}</strong>.`;
+      }
+      balTitle.textContent = title;
+      balEl.innerHTML = `<p class="card-copy tone-${tone}">${body}</p>`;
+    }
+  }
+
+  // Recent activity feed
+  renderDashboardActivity();
+}
+
+function renderDashboardActivity() {
+  const container = document.getElementById("dashboardActivity");
+  if (!container) return;
+
+  const events = [];
+  for (const exp of state.expenses) {
+    events.push({
+      ts: exp.timestamp,
+      icon: "💰",
+      title: `${labelForPerson(exp.personId)} ha aggiunto una spesa`,
+      text: `${escapeHtml(exp.description)} · ${formatMoney(exp.amount)}`,
+      section: "spese",
+    });
+    for (const c of (exp.comments || [])) {
+      events.push({
+        ts: c.timestamp,
+        icon: "💬",
+        title: `${labelForPerson(c.authorId)} ha commentato una spesa`,
+        text: `"${escapeHtml(exp.description)}": ${escapeHtml(c.text)}`,
+        section: "spese",
+      });
+    }
+  }
+  for (const msg of state.chatMessages) {
+    events.push({
+      ts: msg.timestamp,
+      icon: "💬",
+      title: `${labelForPerson(msg.authorId)} in chat`,
+      text: escapeHtml(msg.text),
+      section: "chat",
+    });
+  }
+  for (const item of state.shoppingList) {
+    events.push({
+      ts: item.timestamp,
+      icon: "📝",
+      title: `${labelForPerson(item.authorId)} ha aggiunto alla lista`,
+      text: escapeHtml(item.text),
+      section: "lista",
+    });
+  }
+  for (const item of state.wishlist) {
+    events.push({
+      ts: item.timestamp,
+      icon: "🎁",
+      title: `${labelForPerson(item.requestedById)} ha aggiunto alla wishlist`,
+      text: escapeHtml(item.text),
+      section: "wishlist",
+    });
+  }
+
+  if (events.length === 0) {
+    container.innerHTML = `<div class="empty-state"><strong>Nessuna attività ancora.</strong><br>Aggiungi una spesa o scrivi in chat per vedere qualcosa qui.</div>`;
+    return;
+  }
+
+  events.sort((a, b) => (b.ts || 0) - (a.ts || 0));
+  const recent = events.slice(0, 6);
+  container.innerHTML = `<div class="activity-feed">${recent.map(e => `
+    <button class="activity-item" type="button" onclick="navigateTo('${e.section}')">
+      <span class="activity-icon" aria-hidden="true">${e.icon}</span>
+      <div class="activity-body">
+        <div class="activity-title">${e.title}</div>
+        <div class="activity-text">${e.text}</div>
+        <div class="activity-time">${formatRelativeTime(e.ts)}</div>
+      </div>
+    </button>
+  `).join("")}</div>`;
+}
+
+function formatRelativeTime(ts) {
+  if (!ts) return "";
+  const diff = Date.now() - ts;
+  const sec = Math.floor(diff / 1000);
+  if (sec < 60) return "pochi secondi fa";
+  const min = Math.floor(sec / 60);
+  if (min < 60) return `${min} min fa`;
+  const hr = Math.floor(min / 60);
+  if (hr < 24) return `${hr} ${hr === 1 ? "ora" : "ore"} fa`;
+  const d = Math.floor(hr / 24);
+  if (d < 7) return `${d} ${d === 1 ? "giorno" : "giorni"} fa`;
+  return new Date(ts).toLocaleDateString("it-IT", { day: "numeric", month: "short" });
 }
 
 function renderStatCard(value, label) {
@@ -694,33 +1043,48 @@ function setText(id, text) {
 }
 
 function setActiveParticipant(participantId) {
+  const participant = personById(participantId);
+  if (!participant) {
+    activeParticipantId = null;
+    persistActiveParticipant();
+    renderAll();
+    return;
+  }
   activeParticipantId = participantId;
   persistActiveParticipant();
   prefillExpenseForActiveUser();
   renderAll();
+  if (typeof updatePushUI === "function") updatePushUI();
+  if (typeof updateSubscriptionParticipant === "function") updateSubscriptionParticipant();
   showToast("Profilo attivo aggiornato", `Da ora le azioni rapide vengono fatte come ${labelForPerson(participantId)}.`, "good");
+  profileSelectionPromptOpen = false;
 }
 
 function renderExpenseForm() {
   const select = document.getElementById("expensePersonSelect");
+  if (!select) return;
   const currentValue = select.value;
-  select.innerHTML = state.participants.map(participant => `
-    <option value="${participant.id}">${participant.avatar} ${escapeHtml(participant.name)}</option>
-  `).join("");
+  const hasCurrentValue = state.participants.some(participant => participant.id === currentValue);
+  const activePerson = getActiveParticipant();
+  select.innerHTML = `
+    <option value="" ${!hasCurrentValue && !activePerson ? "selected" : ""} disabled>Seleziona un profilo</option>
+    ${state.participants.map(participant => `
+      <option value="${participant.id}" ${participant.id === (hasCurrentValue ? currentValue : activePerson?.id) ? "selected" : ""}>
+        ${participant.avatar} ${escapeHtml(participant.name)}
+      </option>
+    `).join("")}
+  `;
 
-  const defaultValue = state.participants.some(participant => participant.id === currentValue)
-    ? currentValue
-    : activeParticipantId || state.participants[0]?.id || "";
+  const defaultValue = hasCurrentValue ? currentValue : activePerson?.id || "";
   select.value = defaultValue;
 
-  const activePerson = getActiveParticipant();
-  setText("expenseActionHint", activePerson ? `Commenti veloci come ${activePerson.avatar} ${activePerson.name}` : "Prima aggiungi il gruppo");
+  setText("expenseActionHint", activePerson ? `Commenti veloci come ${activePerson.avatar} ${activePerson.name}` : "Seleziona un profilo per registrare la spesa");
 }
 
 function prefillExpenseForActiveUser() {
   const select = document.getElementById("expensePersonSelect");
-  if (select && activeParticipantId) {
-    select.value = activeParticipantId;
+  if (select) {
+    select.value = activeParticipantId || "";
   }
 }
 
@@ -1124,34 +1488,120 @@ function renderShoppingList() {
     `).join("");
 }
 
+let lastChatRenderSig = "";
+let chatReactionPickerMsgId = null;
+const CHAT_REACTION_EMOJIS = ["❤️", "😂", "👍", "🔥", "😮", "😢"];
+
+function toggleChatReactionPicker(messageId) {
+  chatReactionPickerMsgId = chatReactionPickerMsgId === messageId ? null : messageId;
+  lastChatRenderSig = ""; // force re-render
+  renderChat();
+}
+
+function toggleChatReaction(messageId, emoji) {
+  const activePerson = getActiveParticipant();
+  if (!activePerson) {
+    showToast("Serve un profilo", "Seleziona prima chi sei per reagire.", "warning");
+    return;
+  }
+  const message = state.chatMessages.find(m => m.id === messageId);
+  if (!message) return;
+  if (!message.reactions) message.reactions = {};
+  if (!message.reactions[emoji]) message.reactions[emoji] = [];
+  const list = message.reactions[emoji];
+  const idx = list.indexOf(activePerson.id);
+  if (idx >= 0) {
+    list.splice(idx, 1);
+    if (list.length === 0) delete message.reactions[emoji];
+  } else {
+    list.push(activePerson.id);
+  }
+  // Close picker after reacting
+  chatReactionPickerMsgId = null;
+  lastChatRenderSig = ""; // force re-render
+  scheduleSave();
+  renderChat();
+  // Notify author if adding
+  if (idx < 0 && message.authorId !== activePerson.id) {
+    const author = personById(message.authorId);
+    if (author) {
+      notifyOthers(
+        `${emoji} reazione in chat`,
+        `${activePerson.name} ha reagito ${emoji} al tuo messaggio.`,
+        "chat-reaction",
+        "/#chat"
+      );
+    }
+  }
+}
+
 function renderChat() {
   const container = document.getElementById("chatMessages");
   if (state.participants.length === 0) {
     container.innerHTML = `<div class="empty-state"><strong>Niente chat senza gruppo.</strong><br>Aggiungi prima i partecipanti.</div>`;
+    lastChatRenderSig = "empty-no-group";
     return;
   }
 
   if (state.chatMessages.length === 0) {
     container.innerHTML = `<div class="empty-state"><strong>Silenzio operativo.</strong><br>Scrivi il primo messaggio al gruppo.</div>`;
+    lastChatRenderSig = "empty-no-msgs";
     return;
   }
 
-  container.innerHTML = state.chatMessages
-    .slice()
-    .sort((a, b) => a.timestamp - b.timestamp)
-    .map(message => {
-      const author = personById(message.authorId);
-      const self = author && author.id === activeParticipantId;
-      return `
-        <div class="chat-bubble ${self ? "self" : "other"}">
-          ${self ? "" : `<div class="chat-author">${author ? `${author.avatar} ${escapeHtml(author.name)}` : "👤 Ex partecipante"}</div>`}
-          <div class="chat-text">${escapeHtml(message.text)}</div>
-          <div class="chat-time">${formatTime(message.timestamp)}</div>
-        </div>
-      `;
-    }).join("");
+  const sorted = state.chatMessages.slice().sort((a, b) => a.timestamp - b.timestamp);
+  const reactionsSig = sorted.map(m => {
+    const r = m.reactions || {};
+    return Object.keys(r).length ? Object.entries(r).map(([e, ids]) => `${e}${ids.length}`).join("") : "";
+  }).join("|");
+  const sig = `${activeParticipantId}|${chatReactionPickerMsgId}|${sorted.map(m => m.id + ":" + m.timestamp).join(",")}|${reactionsSig}`;
+  if (sig === lastChatRenderSig) return;
 
-  container.scrollTop = container.scrollHeight;
+  const nearBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 120;
+
+  container.innerHTML = sorted.map(message => {
+    const author = personById(message.authorId);
+    const self = author && author.id === activeParticipantId;
+    const reactions = message.reactions || {};
+    const hasReactions = Object.keys(reactions).some(e => reactions[e]?.length > 0);
+    const pickerOpen = chatReactionPickerMsgId === message.id;
+
+    // Render existing reactions
+    let reactionsHtml = "";
+    if (hasReactions) {
+      const chips = Object.entries(reactions)
+        .filter(([, ids]) => ids && ids.length > 0)
+        .map(([emoji, ids]) => {
+          const myReaction = activeParticipantId && ids.includes(activeParticipantId);
+          return `<button class="chat-reaction-chip ${myReaction ? "mine" : ""}" type="button" onclick="toggleChatReaction('${message.id}', '${emoji}')">${emoji} ${ids.length}</button>`;
+        }).join("");
+      reactionsHtml = `<div class="chat-reactions">${chips}</div>`;
+    }
+
+    // Reaction picker (preset emojis)
+    let pickerHtml = "";
+    if (pickerOpen) {
+      pickerHtml = `<div class="chat-reaction-picker">${CHAT_REACTION_EMOJIS.map(e =>
+        `<button class="chat-reaction-picker-btn" type="button" onclick="toggleChatReaction('${message.id}', '${e}')">${e}</button>`
+      ).join("")}</div>`;
+    }
+
+    return `
+      <div class="chat-bubble ${self ? "self" : "other"}" data-msg-id="${message.id}">
+        ${self ? "" : `<div class="chat-author">${author ? `${author.avatar} ${escapeHtml(author.name)}` : "👤 Ex partecipante"}</div>`}
+        <div class="chat-text">${escapeHtml(message.text)}</div>
+        <div class="chat-bottom">
+          <span class="chat-time">${formatTime(message.timestamp)}</span>
+          <button class="chat-react-btn" type="button" onclick="toggleChatReactionPicker('${message.id}')" title="Reagisci" aria-label="Reagisci">☺</button>
+        </div>
+        ${pickerHtml}
+        ${reactionsHtml}
+      </div>
+    `;
+  }).join("");
+  lastChatRenderSig = sig;
+
+  if (nearBottom) container.scrollTop = container.scrollHeight;
 }
 
 function renderGroupSummary() {
@@ -1276,6 +1726,9 @@ function renderGames() {
   renderQuizCard();
   renderPartyChallenge();
   renderGamesLeaderboard();
+  updateReactionUi();
+  updateMemoryUi();
+  updateTapFireUi();
 }
 
 function ensureQuizQuestion() {
@@ -1351,35 +1804,82 @@ function renderGamesLeaderboard() {
     return;
   }
 
-  const rows = state.participants
-    .map(participant => {
-      const grillStats = getGrillStatsForPlayer(participant.id);
-      const quizStats = getQuizStatsForPlayer(participant.id);
-      const draws = getChallengeDrawsForPlayer(participant.id);
-      const score = grillStats.best + quizStats.correct * 12 + quizStats.bestStreak * 4 + draws * 3;
-      return {
-        participant,
-        grillStats,
-        quizStats,
-        draws,
-        score
-      };
-    })
+  // Compute per-game leaders (gold medals)
+  const players = state.participants.map(p => ({ p, ...computeGameStats(p.id) }));
+  const leaders = {
+    grill:    topPlayerByMetric(players, x => x.grillStats.best),
+    quiz:     topPlayerByMetric(players, x => x.quizStats.correct),
+    reaction: topPlayerByMetric(players, x => x.reactionStats.best, true), // lower = better
+    memory:   topPlayerByMetric(players, x => x.memoryStats.best),
+    tapfire:  topPlayerByMetric(players, x => x.tapFireStats.best),
+  };
+  for (const [key, reg] of Object.entries(GAMES_REGISTRY)) {
+    leaders[key] = topPlayerByMetric(players, x => x[key]?.best || 0, reg.lowerIsBetter);
+  }
+
+  const reactionEmojis = ["🔥", "👏", "💪", "🎯", "😱"];
+  const reactionsMap = state.games.reactions || {};
+
+  const rows = players
     .sort((a, b) => b.score - a.score)
-    .map(({ participant, grillStats, quizStats, draws, score }) => `
+    .map((row, rankIdx) => {
+      const { p } = row;
+      const medals = [];
+      if (leaders.grill    === p.id) medals.push('<span class="medal" title="Re della Griglia">🥇🍖</span>');
+      if (leaders.quiz     === p.id) medals.push('<span class="medal" title="Sommelier">🥇🧠</span>');
+      if (leaders.reaction === p.id) medals.push('<span class="medal" title="Fulmine">🥇⚡</span>');
+      if (leaders.memory   === p.id) medals.push('<span class="medal" title="Memoria">🥇🧩</span>');
+      if (leaders.tapfire  === p.id) medals.push('<span class="medal" title="Cacciatore di Braci">🥇🔥</span>');
+      for (const [key, reg] of Object.entries(GAMES_REGISTRY)) {
+        if (leaders[key] === p.id && (row[key]?.best || 0) > 0) {
+          medals.push(`<span class="medal" title="${reg.label}">🥇${reg.icon}</span>`);
+        }
+      }
+      const rankBadge = rankIdx === 0 ? '🥇' : rankIdx === 1 ? '🥈' : rankIdx === 2 ? '🥉' : `#${rankIdx + 1}`;
+
+      // Compact stat pills (only show games the player has actually played)
+      const pills = [];
+      if (row.grillStats.best    > 0) pills.push(`🍖 ${row.grillStats.best}`);
+      if (row.quizStats.correct  > 0) pills.push(`🧠 ${row.quizStats.correct}`);
+      if (row.reactionStats.best > 0) pills.push(`⚡ ${row.reactionStats.best}ms`);
+      if (row.memoryStats.best   > 0) pills.push(`🧩 ${row.memoryStats.best}`);
+      if (row.tapFireStats.best  > 0) pills.push(`🔥 ${row.tapFireStats.best}`);
+      for (const [key, reg] of Object.entries(GAMES_REGISTRY)) {
+        const v = row[key]?.best || 0;
+        if (v > 0) {
+          const display = reg.lowerIsBetter ? `${(v/1000).toFixed(1)}s` : String(v);
+          pills.push(`${reg.icon} ${display}`);
+        }
+      }
+      if (row.draws > 0) pills.push(`🎯 ${row.draws}`);
+
+      const playerReactions = reactionsMap[p.id] || {};
+      const selfIsMe = activeParticipantId === p.id;
+      const reactionsHtml = reactionEmojis.map(emoji => {
+        const reactors = playerReactions[emoji] || [];
+        const count = reactors.length;
+        const mineOn = activeParticipantId && reactors.includes(activeParticipantId);
+        return `<button class="reaction-chip ${mineOn ? "on" : ""} ${selfIsMe ? "disabled" : ""}" type="button" ${selfIsMe ? "disabled" : ""} onclick="togglePlayerReaction('${p.id}', '${emoji}')">${emoji}${count > 0 ? ` <span>${count}</span>` : ""}</button>`;
+      }).join("");
+
+      return `
       <div class="game-score-row">
         <div class="game-score-main">
-          <span class="avatar">${participant.avatar}</span>
+          <span class="rank-badge">${rankBadge}</span>
+          <span class="avatar">${p.avatar}</span>
           <div>
-            <strong>${escapeHtml(participant.name)}</strong>
-            <div class="game-score-meta">
-              Grill ${grillStats.best} · Quiz ${quizStats.correct} giuste · Sfide ${draws}
+            <div class="game-score-name">
+              <strong>${escapeHtml(p.name)}</strong>
+              ${medals.length ? `<span class="medals">${medals.join("")}</span>` : ""}
             </div>
+            ${pills.length ? `<div class="stat-pills">${pills.map(p => `<span class="stat-pill">${p}</span>`).join("")}</div>` : '<div class="game-score-meta">Ancora nessun punteggio</div>'}
+            <div class="reaction-chips">${reactionsHtml}</div>
           </div>
         </div>
-        <strong>${score}</strong>
+        <strong class="game-score-total">${row.score}</strong>
       </div>
-    `)
+    `;
+    })
     .join("");
 
   container.innerHTML = rows;
@@ -1404,6 +1904,1355 @@ function getQuizStatsForPlayer(playerId) {
 
 function getChallengeDrawsForPlayer(playerId) {
   return Number(state.games.partyChallenges.drawsByPlayer[playerId]) || 0;
+}
+
+// Unified registry for the many simple games
+const GAMES_REGISTRY = {
+  sausageJump:   { label: "Salsiccia Jump",    icon: "🌭", weight: 3 },
+  braceCatcher:  { label: "Brace Catcher",     icon: "🥩", weight: 4 },
+  sausageSnake:  { label: "Serpente alla Brace", icon: "🐍", weight: 5 },
+  skewerStack:   { label: "Spiedino Stack",    icon: "🍢", weight: 6 },
+  whackBurger:   { label: "Scotti la Carne",   icon: "🔨", weight: 3 },
+  tongPrecision: { label: "Pinza d'Oro",       icon: "🎯", weight: 1 },
+  marinadeMatch: { label: "Marinatura Mixer",  icon: "🃏", weight: 0, lowerIsBetter: true },
+  holdCook:      { label: "Cottura a Puntino", icon: "🧑‍🍳", weight: 2 },
+  calcCheck:     { label: "Calcola il Conto",  icon: "🧮", weight: 8 },
+  countSausage:  { label: "Conta le Salsicce", icon: "🔢", weight: 10 },
+};
+
+function getSimpleGameStatsForPlayer(gameKey, playerId) {
+  const raw = state.games?.[gameKey]?.statsByPlayer?.[playerId];
+  return { best: Number(raw?.best) || 0, plays: Number(raw?.plays) || 0 };
+}
+
+function recordSimpleGameScore(gameKey, score) {
+  const person = getActiveParticipant();
+  if (!person) return false;
+  const reg = GAMES_REGISTRY[gameKey];
+  if (!reg) return false;
+  const bag = state.games[gameKey];
+  if (!bag) return false;
+  const stats = bag.statsByPlayer[person.id] || { best: 0, plays: 0 };
+  stats.plays = (stats.plays || 0) + 1;
+  const current = stats.best || 0;
+  const isRecord = reg.lowerIsBetter
+    ? (current === 0 || score < current)
+    : (score > current);
+  if (isRecord && score > 0) stats.best = score;
+  bag.statsByPlayer[person.id] = stats;
+  scheduleSave();
+  renderGamesLeaderboard();
+  const formatted = reg.lowerIsBetter ? `${(score / 1000).toFixed(1)}s` : String(score);
+  if (isRecord && score > 0) {
+    spawnConfetti();
+    showToast(`Nuovo record - ${reg.label}`, `${person.name}: ${formatted}`, "good");
+  } else {
+    showToast(reg.label, `${person.name}: ${formatted}`, "good");
+  }
+  return isRecord;
+}
+
+function computeGameStats(playerId) {
+  const grillStats = getGrillStatsForPlayer(playerId);
+  const quizStats = getQuizStatsForPlayer(playerId);
+  const draws = getChallengeDrawsForPlayer(playerId);
+  const reactionStats = getReactionStatsForPlayer(playerId);
+  const memoryStats = getMemoryStatsForPlayer(playerId);
+  const tapFireStats = getTapFireStatsForPlayer(playerId);
+  // Refined score weights — each game contributes comparably when maxed out.
+  const reactionScore = reactionStats.best > 0 ? Math.max(0, Math.round((500 - reactionStats.best) / 5)) : 0;
+  let score =
+      grillStats.best            // 0–100
+    + quizStats.correct * 10     // ~100 per 10 correct answers
+    + quizStats.bestStreak * 5   // bonus for streaks
+    + reactionScore              // 0–70
+    + memoryStats.best * 8       // 8 per sequence step
+    + tapFireStats.best * 3      // 3 per tap
+    + draws * 3;                 // minor bonus for party draws
+  // Extra games
+  const extras = {};
+  for (const [key, reg] of Object.entries(GAMES_REGISTRY)) {
+    const stats = getSimpleGameStatsForPlayer(key, playerId);
+    extras[key] = stats;
+    if (reg.lowerIsBetter) {
+      // marinadeMatch: faster = better. 60s=0pt, 10s=50pt
+      if (stats.best > 0) score += Math.max(0, Math.round((60000 - stats.best) / 1000));
+    } else {
+      score += stats.best * reg.weight;
+    }
+  }
+  return { grillStats, quizStats, draws, reactionStats, memoryStats, tapFireStats, ...extras, score };
+}
+
+function topPlayerByMetric(playersWithStats, metricFn, lowerIsBetter = false) {
+  let best = null;
+  let bestVal = lowerIsBetter ? Infinity : -Infinity;
+  for (const row of playersWithStats) {
+    const v = Number(metricFn(row)) || 0;
+    if (v === 0) continue; // skip no-record players
+    if (lowerIsBetter ? v < bestVal : v > bestVal) {
+      bestVal = v;
+      best = row.p.id;
+    }
+  }
+  return best;
+}
+
+// ── Reactions on leaderboard rows ──
+function togglePlayerReaction(playerId, emoji) {
+  const activePerson = getActiveParticipant();
+  if (!activePerson) {
+    showToast("Serve un profilo", "Seleziona prima chi sei per lasciare una reazione.", "warning");
+    return;
+  }
+  if (activePerson.id === playerId) {
+    showToast("Senza esagerare", "Non puoi reagire ai tuoi stessi punteggi.", "warning");
+    return;
+  }
+  if (!state.games.reactions) state.games.reactions = {};
+  if (!state.games.reactions[playerId]) state.games.reactions[playerId] = {};
+  const list = state.games.reactions[playerId][emoji] || [];
+  const idx = list.indexOf(activePerson.id);
+  if (idx >= 0) {
+    list.splice(idx, 1);
+  } else {
+    list.push(activePerson.id);
+  }
+  if (list.length === 0) {
+    delete state.games.reactions[playerId][emoji];
+    if (Object.keys(state.games.reactions[playerId]).length === 0) {
+      delete state.games.reactions[playerId];
+    }
+  } else {
+    state.games.reactions[playerId][emoji] = list;
+  }
+  scheduleSave();
+  renderGamesLeaderboard();
+  // Notify only when adding
+  if (idx < 0) {
+    const target = personById(playerId);
+    if (target) {
+      notifyOthers(
+        `${emoji} nuova reazione`,
+        `${activePerson.name} ti ha reagito ${emoji} sulla classifica!`,
+        "reaction",
+        "/#giochi"
+      );
+    }
+  }
+}
+
+function getReactionStatsForPlayer(playerId) {
+  const raw = state.games.reactionFlame?.statsByPlayer?.[playerId];
+  return {
+    best: Number(raw?.best) || 0,        // ms, 0 = not played
+    plays: Number(raw?.plays) || 0,
+    falseStarts: Number(raw?.falseStarts) || 0,
+  };
+}
+
+function getMemoryStatsForPlayer(playerId) {
+  const raw = state.games.memoryFlame?.statsByPlayer?.[playerId];
+  return {
+    best: Number(raw?.best) || 0,        // longest sequence
+    plays: Number(raw?.plays) || 0,
+  };
+}
+
+// ── Reazione Brace ──
+function updateReactionUi() {
+  const pad = document.getElementById("reactionPad");
+  const text = document.getElementById("reactionPadText");
+  const time = document.getElementById("reactionPadTime");
+  const status = document.getElementById("reactionStatus");
+  if (!pad || !text || !time || !status) return;
+
+  pad.dataset.phase = reactionGame.phase;
+  const activePerson = getActiveParticipant();
+  const stats = activePerson ? getReactionStatsForPlayer(activePerson.id) : null;
+  const bestLabel = stats && stats.best > 0 ? `Miglior tempo: ${stats.best} ms` : "Ancora nessun record";
+
+  switch (reactionGame.phase) {
+    case "idle":
+      text.textContent = "Tocca per iniziare";
+      time.textContent = "";
+      status.textContent = activePerson ? `${bestLabel}. Metti a fuoco il pollice.` : "Seleziona un profilo per tenere traccia del record.";
+      break;
+    case "waiting":
+      text.textContent = "Aspetta…";
+      time.textContent = "";
+      status.textContent = "Non toccare ancora. Concentrati sul colore.";
+      break;
+    case "ready":
+      text.textContent = "TOCCA!";
+      time.textContent = "";
+      status.textContent = "Vai, vai, vai!";
+      break;
+    case "done":
+      if (reactionGame.lastResult === "false-start") {
+        text.textContent = "Troppo presto!";
+        time.textContent = "Falso start";
+        status.textContent = `Hai toccato prima del verde. Tocca ancora per ritentare. ${bestLabel}.`;
+      } else {
+        text.textContent = "Tocca per riprovare";
+        time.textContent = `${reactionGame.reactionMs} ms`;
+        const tag = reactionGame.reactionMs < 220 ? "Fulmine" : reactionGame.reactionMs < 300 ? "Ottimo riflesso" : reactionGame.reactionMs < 400 ? "Buon tempo" : "Migliorabile";
+        status.textContent = `${tag}. ${bestLabel}.`;
+      }
+      break;
+  }
+}
+
+function handleReactionTap() {
+  const activePerson = requireActiveParticipant("giocare a Reazione Brace");
+  if (!activePerson) return;
+
+  const phase = reactionGame.phase;
+  if (phase === "idle" || phase === "done") {
+    // Start a new round
+    reactionGame.phase = "waiting";
+    reactionGame.lastResult = null;
+    updateReactionUi();
+    const wait = 1200 + Math.random() * 3200;
+    if (reactionGame.timeoutId) clearTimeout(reactionGame.timeoutId);
+    reactionGame.timeoutId = setTimeout(() => {
+      reactionGame.phase = "ready";
+      reactionGame.startTime = performance.now();
+      updateReactionUi();
+    }, wait);
+  } else if (phase === "waiting") {
+    // False start
+    if (reactionGame.timeoutId) clearTimeout(reactionGame.timeoutId);
+    reactionGame.timeoutId = null;
+    reactionGame.phase = "done";
+    reactionGame.lastResult = "false-start";
+    updateReactionUi();
+    const stats = state.games.reactionFlame.statsByPlayer[activePerson.id] || { best: 0, plays: 0, falseStarts: 0 };
+    stats.falseStarts = (stats.falseStarts || 0) + 1;
+    state.games.reactionFlame.statsByPlayer[activePerson.id] = stats;
+    scheduleSave();
+    showToast("Falso start", `${activePerson.name}, calma. Hai anticipato il verde.`, "warning");
+  } else if (phase === "ready") {
+    const ms = Math.round(performance.now() - reactionGame.startTime);
+    reactionGame.reactionMs = ms;
+    reactionGame.phase = "done";
+    reactionGame.lastResult = "ok";
+    const stats = state.games.reactionFlame.statsByPlayer[activePerson.id] || { best: 0, plays: 0, falseStarts: 0 };
+    stats.plays = (stats.plays || 0) + 1;
+    const isRecord = !stats.best || ms < stats.best;
+    if (isRecord) stats.best = ms;
+    state.games.reactionFlame.statsByPlayer[activePerson.id] = stats;
+    scheduleSave();
+    updateReactionUi();
+    renderGamesLeaderboard();
+    if (isRecord) {
+      spawnConfetti();
+      showToast("Nuovo record", `${activePerson.name}: ${ms} ms. Reazione di un puma affamato.`, "good");
+    } else {
+      showToast("Reazione Brace", `${activePerson.name}: ${ms} ms. Il tuo record è ${stats.best} ms.`, "good");
+    }
+  }
+}
+
+// ── Memoria Brace ──
+const MEMORY_TILE_COUNT = 4;
+
+function clearMemoryTimeouts() {
+  for (const id of memoryGame.timeoutIds) clearTimeout(id);
+  memoryGame.timeoutIds = [];
+}
+
+function updateMemoryUi() {
+  const status = document.getElementById("memoryStatus");
+  const btn = document.getElementById("memoryStartBtn");
+  const grid = document.getElementById("memoryGrid");
+  if (!status || !btn || !grid) return;
+
+  grid.dataset.phase = memoryGame.phase;
+  const activePerson = getActiveParticipant();
+  const stats = activePerson ? getMemoryStatsForPlayer(activePerson.id) : null;
+  const bestLabel = stats && stats.best > 0 ? `Record: sequenza di ${stats.best}` : "Ancora nessun record";
+
+  switch (memoryGame.phase) {
+    case "idle":
+      btn.textContent = "Inizia sequenza";
+      btn.disabled = false;
+      status.textContent = activePerson ? `${bestLabel}. Pronto a memorizzare?` : "Seleziona un profilo per tenere traccia del record.";
+      break;
+    case "showing":
+      btn.textContent = "Guarda la sequenza";
+      btn.disabled = true;
+      status.textContent = `Guarda bene: sequenza di ${memoryGame.sequence.length}.`;
+      break;
+    case "input":
+      btn.textContent = "Ripeti la sequenza";
+      btn.disabled = true;
+      status.textContent = `Tocco ${memoryGame.userInput.length + 1} di ${memoryGame.sequence.length}. Vai.`;
+      break;
+    case "failed":
+      btn.textContent = "Riprova";
+      btn.disabled = false;
+      status.textContent = `Sequenza rotta al colpo ${memoryGame.userInput.length}. ${bestLabel}.`;
+      break;
+    case "success":
+      btn.textContent = "Continua (+1 passo)";
+      btn.disabled = false;
+      status.textContent = `Hai superato ${memoryGame.sequence.length}. ${bestLabel}.`;
+      break;
+  }
+}
+
+function lightMemoryTile(index, duration = 450) {
+  const tile = document.querySelector(`.memory-tile[data-tile="${index}"]`);
+  if (!tile) return;
+  tile.classList.add("lit");
+  setTimeout(() => tile.classList.remove("lit"), duration);
+}
+
+function showMemorySequence() {
+  clearMemoryTimeouts();
+  memoryGame.phase = "showing";
+  updateMemoryUi();
+  const stepMs = Math.max(360, 700 - memoryGame.sequence.length * 20);
+  memoryGame.sequence.forEach((tile, i) => {
+    const id = setTimeout(() => lightMemoryTile(tile, stepMs - 120), i * stepMs + 300);
+    memoryGame.timeoutIds.push(id);
+  });
+  const endId = setTimeout(() => {
+    memoryGame.phase = "input";
+    memoryGame.userInput = [];
+    updateMemoryUi();
+  }, memoryGame.sequence.length * stepMs + 400);
+  memoryGame.timeoutIds.push(endId);
+}
+
+function startMemoryGame() {
+  const activePerson = requireActiveParticipant("giocare a Memoria Brace");
+  if (!activePerson) return;
+  clearMemoryTimeouts();
+  // If resuming from success, keep sequence and add one more; else start fresh
+  if (memoryGame.phase === "success") {
+    memoryGame.sequence.push(Math.floor(Math.random() * MEMORY_TILE_COUNT));
+  } else {
+    memoryGame.sequence = [Math.floor(Math.random() * MEMORY_TILE_COUNT)];
+  }
+  memoryGame.userInput = [];
+  showMemorySequence();
+}
+
+function handleMemoryTile(index) {
+  if (memoryGame.phase !== "input") return;
+  const activePerson = getActiveParticipant();
+  if (!activePerson) return;
+
+  lightMemoryTile(index, 240);
+  memoryGame.userInput.push(index);
+  const i = memoryGame.userInput.length - 1;
+  if (memoryGame.userInput[i] !== memoryGame.sequence[i]) {
+    // Failed
+    memoryGame.phase = "failed";
+    const reached = memoryGame.sequence.length - 1;
+    const stats = state.games.memoryFlame.statsByPlayer[activePerson.id] || { best: 0, plays: 0 };
+    stats.plays = (stats.plays || 0) + 1;
+    const isRecord = reached > (stats.best || 0);
+    if (isRecord) stats.best = reached;
+    state.games.memoryFlame.statsByPlayer[activePerson.id] = stats;
+    scheduleSave();
+    updateMemoryUi();
+    renderGamesLeaderboard();
+    document.getElementById("memoryGrid")?.classList.add("fail-flash");
+    setTimeout(() => document.getElementById("memoryGrid")?.classList.remove("fail-flash"), 500);
+    if (isRecord && reached > 0) {
+      spawnConfetti();
+      showToast("Nuovo record", `${activePerson.name} è arrivato/a a ${reached}. Memoria da lepre.`, "good");
+    } else {
+      showToast("Memoria Brace", `${activePerson.name} si ferma a ${reached}.`, "warning");
+    }
+  } else if (memoryGame.userInput.length === memoryGame.sequence.length) {
+    // Round complete — record this depth and auto-continue
+    const depth = memoryGame.sequence.length;
+    const stats = state.games.memoryFlame.statsByPlayer[activePerson.id] || { best: 0, plays: 0 };
+    const isRecord = depth > (stats.best || 0);
+    if (isRecord) stats.best = depth;
+    state.games.memoryFlame.statsByPlayer[activePerson.id] = stats;
+    scheduleSave();
+    memoryGame.phase = "success";
+    updateMemoryUi();
+    renderGamesLeaderboard();
+    if (isRecord) {
+      spawnConfetti();
+      showToast("Nuovo record", `${activePerson.name}: sequenza di ${depth}. Testa limpida.`, "good");
+    }
+    // Auto-advance to next round after a short pause
+    const advId = setTimeout(() => {
+      if (memoryGame.phase === "success") {
+        memoryGame.sequence.push(Math.floor(Math.random() * MEMORY_TILE_COUNT));
+        memoryGame.userInput = [];
+        showMemorySequence();
+      }
+    }, 900);
+    memoryGame.timeoutIds.push(advId);
+  } else {
+    updateMemoryUi();
+  }
+}
+
+// ── Braci in Fuga (Tap Fire) ──
+const TAPFIRE_DURATION_SECONDS = 15;
+
+function getTapFireStatsForPlayer(playerId) {
+  const raw = state.games.tapFire?.statsByPlayer?.[playerId];
+  return {
+    best: Number(raw?.best) || 0,
+    plays: Number(raw?.plays) || 0,
+  };
+}
+
+function updateTapFireUi() {
+  const grid = document.getElementById("tapFireGrid");
+  const btn = document.getElementById("tapFireStartBtn");
+  const status = document.getElementById("tapFireStatus");
+  if (!grid || !btn || !status) return;
+
+  grid.dataset.state = tapFireGame.phase;
+  setText("tapFireScore", String(tapFireGame.score));
+  setText("tapFireTimer", String(Math.max(0, tapFireGame.timeLeft)));
+  btn.disabled = tapFireGame.phase === "playing";
+  btn.textContent = tapFireGame.phase === "playing" ? "In corso…" : "Accendi la brace";
+
+  // highlight active cell
+  grid.querySelectorAll(".tapfire-cell").forEach(cell => {
+    const idx = Number(cell.dataset.cell);
+    cell.classList.toggle("lit", idx === tapFireGame.activeCell && tapFireGame.phase === "playing");
+  });
+
+  const activePerson = getActiveParticipant();
+  const stats = activePerson ? getTapFireStatsForPlayer(activePerson.id) : null;
+  const bestLabel = stats && stats.best > 0 ? `Record: ${stats.best}` : "Ancora nessun record";
+  if (tapFireGame.phase === "idle") {
+    status.textContent = activePerson ? `${bestLabel}. ${TAPFIRE_DURATION_SECONDS}s a tua disposizione.` : "Seleziona un profilo per salvare il record.";
+  } else if (tapFireGame.phase === "playing") {
+    status.textContent = `Dai gas! Punti ${tapFireGame.score} · ${tapFireGame.timeLeft}s rimasti.`;
+  } else {
+    status.textContent = `Fine: ${tapFireGame.score} punti. ${bestLabel}.`;
+  }
+}
+
+function moveTapFireFlame() {
+  // pick a new random cell different from the current one
+  let next = tapFireGame.activeCell;
+  while (next === tapFireGame.activeCell) {
+    next = Math.floor(Math.random() * 9);
+  }
+  tapFireGame.activeCell = next;
+  updateTapFireUi();
+}
+
+function clearTapFireTimers() {
+  if (tapFireGame.tickIntervalId) clearInterval(tapFireGame.tickIntervalId);
+  if (tapFireGame.flameIntervalId) clearInterval(tapFireGame.flameIntervalId);
+  if (tapFireGame.endTimeoutId) clearTimeout(tapFireGame.endTimeoutId);
+  tapFireGame.tickIntervalId = null;
+  tapFireGame.flameIntervalId = null;
+  tapFireGame.endTimeoutId = null;
+}
+
+function startTapFire() {
+  const activePerson = requireActiveParticipant("giocare a Braci in Fuga");
+  if (!activePerson || tapFireGame.phase === "playing") return;
+  clearTapFireTimers();
+  tapFireGame.phase = "playing";
+  tapFireGame.score = 0;
+  tapFireGame.timeLeft = TAPFIRE_DURATION_SECONDS;
+  tapFireGame.activeCell = Math.floor(Math.random() * 9);
+  tapFireGame.startedAt = Date.now();
+  updateTapFireUi();
+
+  tapFireGame.tickIntervalId = setInterval(() => {
+    tapFireGame.timeLeft = Math.max(0, Math.ceil((tapFireGame.startedAt + TAPFIRE_DURATION_SECONDS * 1000 - Date.now()) / 1000));
+    updateTapFireUi();
+  }, 200);
+  // Flame jumps on its own every ~900ms to prevent sitting and waiting
+  tapFireGame.flameIntervalId = setInterval(() => moveTapFireFlame(), 900);
+  tapFireGame.endTimeoutId = setTimeout(() => finishTapFire(), TAPFIRE_DURATION_SECONDS * 1000);
+}
+
+function handleTapFireCell(index) {
+  if (tapFireGame.phase !== "playing") return;
+  if (index === tapFireGame.activeCell) {
+    tapFireGame.score += 1;
+    moveTapFireFlame();
+  } else {
+    tapFireGame.score = Math.max(0, tapFireGame.score - 1);
+    updateTapFireUi();
+  }
+}
+
+function finishTapFire() {
+  if (tapFireGame.phase !== "playing") return;
+  clearTapFireTimers();
+  tapFireGame.phase = "done";
+  tapFireGame.activeCell = -1;
+  tapFireGame.timeLeft = 0;
+  const activePerson = getActiveParticipant();
+  if (activePerson) {
+    const stats = state.games.tapFire.statsByPlayer[activePerson.id] || { best: 0, plays: 0 };
+    stats.plays = (stats.plays || 0) + 1;
+    const isRecord = tapFireGame.score > (stats.best || 0);
+    if (isRecord) stats.best = tapFireGame.score;
+    state.games.tapFire.statsByPlayer[activePerson.id] = stats;
+    scheduleSave();
+    if (isRecord && tapFireGame.score > 0) {
+      spawnConfetti();
+      showToast("Nuovo record", `${activePerson.name}: ${tapFireGame.score} punti a Braci in Fuga.`, "good");
+    } else {
+      showToast("Braci in Fuga", `${activePerson.name}: ${tapFireGame.score} punti. Record ${stats.best}.`, "good");
+    }
+    renderGamesLeaderboard();
+  }
+  updateTapFireUi();
+}
+
+// ═════════════════════════════════════════════════════════════════════
+// ── ARCADE GAMES ──────────────────────────────────────────────────────
+// ═════════════════════════════════════════════════════════════════════
+
+// Swipe-gesture helper. Attaches to an element and calls onSwipe(direction)
+// with "up" / "down" / "left" / "right". Threshold in px.
+function addSwipeHandler(el, onSwipe, { threshold = 24, preventScroll = false } = {}) {
+  if (!el) return;
+  let startX = 0, startY = 0, startT = 0, active = false;
+  el.addEventListener("pointerdown", (e) => {
+    active = true;
+    startX = e.clientX;
+    startY = e.clientY;
+    startT = performance.now();
+  });
+  el.addEventListener("pointermove", (e) => {
+    if (!active || !preventScroll) return;
+    if (Math.abs(e.clientX - startX) > 10 || Math.abs(e.clientY - startY) > 10) {
+      e.preventDefault();
+    }
+  }, { passive: !preventScroll });
+  el.addEventListener("pointerup", (e) => {
+    if (!active) return;
+    active = false;
+    const dx = e.clientX - startX;
+    const dy = e.clientY - startY;
+    const dt = performance.now() - startT;
+    if (dt > 700) return; // too slow = not a swipe
+    const adx = Math.abs(dx), ady = Math.abs(dy);
+    if (Math.max(adx, ady) < threshold) return;
+    if (adx > ady) onSwipe(dx > 0 ? "right" : "left");
+    else onSwipe(dy > 0 ? "down" : "up");
+  });
+  el.addEventListener("pointercancel", () => { active = false; });
+  el.addEventListener("pointerleave", () => { active = false; });
+}
+
+// ── Salsiccia Jump (2D runner) ──
+const sjumpGame = {
+  phase: "idle", score: 0, playerY: 0, playerVy: 0, obstacles: [],
+  lastFrame: 0, speed: 3, spawnCooldown: 0, rafId: null,
+};
+
+function startSausageJump() {
+  const p = requireActiveParticipant("giocare a Salsiccia Jump");
+  if (!p || sjumpGame.phase === "playing") return;
+  sjumpGame.phase = "playing";
+  sjumpGame.score = 0;
+  sjumpGame.playerY = 0;
+  sjumpGame.playerVy = 0;
+  sjumpGame.obstacles = [];
+  sjumpGame.speed = 3;
+  sjumpGame.spawnCooldown = 800;
+  sjumpGame.lastFrame = 0;
+  setText("sjumpStatus", "Tocca per saltare! ⏵");
+  document.getElementById("sjumpStartBtn").disabled = true;
+  document.getElementById("sjumpStartBtn").textContent = "In corso…";
+  sjumpLoop();
+}
+
+function sjumpJump() {
+  if (sjumpGame.phase !== "playing") return;
+  if (sjumpGame.playerY <= 0.1) sjumpGame.playerVy = -14;
+}
+
+function sjumpLoop(ts) {
+  if (sjumpGame.phase !== "playing") return;
+  if (!ts) ts = performance.now();
+  const dt = sjumpGame.lastFrame ? Math.min(32, ts - sjumpGame.lastFrame) : 16;
+  sjumpGame.lastFrame = ts;
+  const stepF = dt / 16;
+  // Physics
+  sjumpGame.playerVy += 0.9 * stepF;
+  sjumpGame.playerY += sjumpGame.playerVy * stepF;
+  if (sjumpGame.playerY > 0) { sjumpGame.playerY = 0; sjumpGame.playerVy = 0; }
+  // Move + spawn obstacles
+  for (const o of sjumpGame.obstacles) o.x -= sjumpGame.speed * stepF;
+  sjumpGame.spawnCooldown -= dt;
+  if (sjumpGame.spawnCooldown <= 0) {
+    sjumpGame.obstacles.push({ x: 300, passed: false });
+    sjumpGame.spawnCooldown = Math.max(650, 1200 + Math.random() * 500 - sjumpGame.score * 15);
+  }
+  // Score & cleanup
+  sjumpGame.obstacles = sjumpGame.obstacles.filter(o => {
+    if (o.x < -30) { if (!o.passed) sjumpGame.score += 1; return false; }
+    return true;
+  });
+  // Collision: player at x=28..54, obstacle at x..x+22
+  for (const o of sjumpGame.obstacles) {
+    if (o.x < 58 && o.x > 10 && sjumpGame.playerY > -28) {
+      return endSausageJump();
+    }
+  }
+  sjumpGame.speed = 3 + Math.min(4, sjumpGame.score * 0.1);
+  sjumpRender();
+  sjumpGame.rafId = requestAnimationFrame(sjumpLoop);
+}
+
+function sjumpRender() {
+  const player = document.getElementById("sjumpPlayer");
+  if (player) player.style.transform = `translateY(${sjumpGame.playerY}px)`;
+  setText("sjumpScore", String(sjumpGame.score));
+  const obsEl = document.getElementById("sjumpObstacles");
+  if (obsEl) {
+    obsEl.innerHTML = sjumpGame.obstacles.map(o =>
+      `<div class="sjump-flame" style="left:${o.x}px">🔥</div>`).join("");
+  }
+}
+
+function endSausageJump() {
+  if (sjumpGame.rafId) cancelAnimationFrame(sjumpGame.rafId);
+  sjumpGame.rafId = null;
+  sjumpGame.phase = "done";
+  document.getElementById("sjumpStartBtn").disabled = false;
+  document.getElementById("sjumpStartBtn").textContent = "Rigioca";
+  setText("sjumpStatus", `Fine: ${sjumpGame.score} salti.`);
+  recordSimpleGameScore("sausageJump", sjumpGame.score);
+}
+
+// ── Brace Catcher ──
+const catcherGame = {
+  phase: "idle", score: 0, playerX: 50, items: [], lastFrame: 0,
+  rafId: null, endAt: 0, spawnCooldown: 0,
+};
+
+function startBraceCatcher() {
+  const p = requireActiveParticipant("giocare a Brace Catcher");
+  if (!p || catcherGame.phase === "playing") return;
+  catcherGame.phase = "playing";
+  catcherGame.score = 0;
+  catcherGame.playerX = 50;
+  catcherGame.items = [];
+  catcherGame.lastFrame = 0;
+  catcherGame.endAt = performance.now() + 30000;
+  catcherGame.spawnCooldown = 600;
+  document.getElementById("catcherStartBtn").disabled = true;
+  document.getElementById("catcherStartBtn").textContent = "In corso…";
+  setText("catcherStatus", "Para tutto quello che riesci!");
+  catcherLoop();
+}
+
+function catcherHandleStageTap(ev) {
+  if (catcherGame.phase !== "playing") return;
+  const stage = document.getElementById("catcherStage");
+  if (!stage) return;
+  const rect = stage.getBoundingClientRect();
+  const x = ev.clientX - rect.left;
+  const pct = Math.max(5, Math.min(95, (x / rect.width) * 100));
+  catcherGame.playerX = pct;
+}
+
+function catcherLoop(ts) {
+  if (catcherGame.phase !== "playing") return;
+  if (!ts) ts = performance.now();
+  const dt = catcherGame.lastFrame ? Math.min(40, ts - catcherGame.lastFrame) : 16;
+  catcherGame.lastFrame = ts;
+  const stepF = dt / 16;
+  if (ts >= catcherGame.endAt) return endBraceCatcher();
+  // Move items
+  for (const it of catcherGame.items) it.y += it.vy * stepF;
+  catcherGame.spawnCooldown -= dt;
+  if (catcherGame.spawnCooldown <= 0) {
+    catcherGame.items.push({
+      x: 8 + Math.random() * 84,
+      y: -10,
+      vy: 3 + Math.random() * 3 + catcherGame.score * 0.1,
+      emoji: ["🥩", "🌽", "🍖", "🌶️", "🍺"][Math.floor(Math.random() * 5)],
+    });
+    catcherGame.spawnCooldown = Math.max(300, 900 - catcherGame.score * 20);
+  }
+  // Check catches
+  catcherGame.items = catcherGame.items.filter(it => {
+    if (it.y >= 88 && Math.abs(it.x - catcherGame.playerX) < 10) {
+      catcherGame.score += 1; return false;
+    }
+    if (it.y > 110) return false;
+    return true;
+  });
+  // Render
+  const p = document.getElementById("catcherPlayer");
+  if (p) p.style.left = catcherGame.playerX + "%";
+  const items = document.getElementById("catcherItems");
+  if (items) {
+    items.innerHTML = catcherGame.items.map(it =>
+      `<div class="catcher-item" style="left:${it.x}%;top:${it.y}%">${it.emoji}</div>`).join("");
+  }
+  setText("catcherScore", String(catcherGame.score));
+  setText("catcherTimer", String(Math.max(0, Math.ceil((catcherGame.endAt - ts) / 1000))));
+  catcherGame.rafId = requestAnimationFrame(catcherLoop);
+}
+
+function endBraceCatcher() {
+  if (catcherGame.rafId) cancelAnimationFrame(catcherGame.rafId);
+  catcherGame.rafId = null;
+  catcherGame.phase = "done";
+  document.getElementById("catcherStartBtn").disabled = false;
+  document.getElementById("catcherStartBtn").textContent = "Rigioca";
+  setText("catcherStatus", `Fine: hai preso ${catcherGame.score} pezzi.`);
+  recordSimpleGameScore("braceCatcher", catcherGame.score);
+}
+
+// ── Serpente alla Brace (Snake) ──
+const SNAKE_SIZE = 12;
+const snakeGame = {
+  phase: "idle", snake: [], dir: "right", nextDir: "right",
+  food: { x: 6, y: 6 }, score: 1, tickId: null,
+};
+
+function startSausageSnake() {
+  const p = requireActiveParticipant("giocare a Serpente alla Brace");
+  if (!p || snakeGame.phase === "playing") return;
+  snakeGame.phase = "playing";
+  snakeGame.snake = [{ x: 6, y: 6 }];
+  snakeGame.dir = "right";
+  snakeGame.nextDir = "right";
+  snakeGame.food = snakeRandomCell();
+  snakeGame.score = 1;
+  document.getElementById("snakeStartBtn").disabled = true;
+  document.getElementById("snakeStartBtn").textContent = "In corso…";
+  setText("snakeStatus", "Muoviti con i pulsanti.");
+  if (snakeGame.tickId) clearInterval(snakeGame.tickId);
+  snakeGame.tickId = setInterval(snakeTick, 220);
+  snakeRender();
+}
+
+function snakeRandomCell() {
+  while (true) {
+    const c = { x: Math.floor(Math.random() * SNAKE_SIZE), y: Math.floor(Math.random() * SNAKE_SIZE) };
+    if (!snakeGame.snake.some(s => s.x === c.x && s.y === c.y)) return c;
+  }
+}
+
+function snakeSetDir(d) {
+  if (snakeGame.phase !== "playing") return;
+  const opposite = { up: "down", down: "up", left: "right", right: "left" };
+  if (opposite[d] === snakeGame.dir) return;
+  snakeGame.nextDir = d;
+}
+
+function snakeTick() {
+  if (snakeGame.phase !== "playing") return;
+  snakeGame.dir = snakeGame.nextDir;
+  const head = snakeGame.snake[0];
+  const delta = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] }[snakeGame.dir];
+  const nx = head.x + delta[0], ny = head.y + delta[1];
+  if (nx < 0 || ny < 0 || nx >= SNAKE_SIZE || ny >= SNAKE_SIZE) return endSausageSnake();
+  if (snakeGame.snake.some(s => s.x === nx && s.y === ny)) return endSausageSnake();
+  snakeGame.snake.unshift({ x: nx, y: ny });
+  if (nx === snakeGame.food.x && ny === snakeGame.food.y) {
+    snakeGame.score = snakeGame.snake.length;
+    snakeGame.food = snakeRandomCell();
+  } else {
+    snakeGame.snake.pop();
+  }
+  snakeRender();
+}
+
+function snakeRender() {
+  const grid = document.getElementById("snakeGrid");
+  if (!grid) return;
+  let html = "";
+  for (let y = 0; y < SNAKE_SIZE; y++) {
+    for (let x = 0; x < SNAKE_SIZE; x++) {
+      const isHead = snakeGame.snake[0]?.x === x && snakeGame.snake[0]?.y === y;
+      const isBody = snakeGame.snake.some((s, i) => i > 0 && s.x === x && s.y === y);
+      const isFood = snakeGame.food.x === x && snakeGame.food.y === y;
+      html += `<div class="snake-cell${isHead ? " head" : isBody ? " body" : isFood ? " food" : ""}">${isHead ? "🐍" : isFood ? "🔥" : ""}</div>`;
+    }
+  }
+  grid.innerHTML = html;
+  setText("snakeScore", String(snakeGame.score));
+}
+
+function endSausageSnake() {
+  if (snakeGame.tickId) clearInterval(snakeGame.tickId);
+  snakeGame.tickId = null;
+  snakeGame.phase = "done";
+  document.getElementById("snakeStartBtn").disabled = false;
+  document.getElementById("snakeStartBtn").textContent = "Rigioca";
+  setText("snakeStatus", `Fine: lunghezza ${snakeGame.score}.`);
+  recordSimpleGameScore("sausageSnake", snakeGame.score);
+}
+
+// ── Spiedino Stack ──
+const stackGame = {
+  phase: "idle", score: 0, towerW: 0, towerLeft: 0,
+  curX: 0, curW: 0, dir: 1, rafId: null, stepMs: 16,
+};
+
+function startSkewerStack() {
+  const p = requireActiveParticipant("giocare a Spiedino Stack");
+  if (!p || stackGame.phase === "playing") return;
+  stackGame.phase = "playing";
+  stackGame.score = 0;
+  stackGame.towerW = 60; // percent
+  stackGame.towerLeft = 20;
+  stackGame.curW = 60;
+  stackGame.curX = 0;
+  stackGame.dir = 1;
+  document.getElementById("stackStartBtn").disabled = true;
+  document.getElementById("stackStartBtn").textContent = "In corso…";
+  setText("stackStatus", "Tocca al momento giusto!");
+  const tower = document.getElementById("stackTower");
+  if (tower) tower.innerHTML = "";
+  stackLoop();
+}
+
+function stackLoop() {
+  if (stackGame.phase !== "playing") return;
+  const maxX = 100 - stackGame.curW;
+  stackGame.curX += stackGame.dir * (1.2 + stackGame.score * 0.08);
+  if (stackGame.curX >= maxX) { stackGame.curX = maxX; stackGame.dir = -1; }
+  if (stackGame.curX <= 0) { stackGame.curX = 0; stackGame.dir = 1; }
+  const el = document.getElementById("stackCurrent");
+  if (el) {
+    el.style.width = stackGame.curW + "%";
+    el.style.left = stackGame.curX + "%";
+  }
+  stackGame.rafId = requestAnimationFrame(stackLoop);
+}
+
+function stackDropBlock() {
+  if (stackGame.phase !== "playing") return;
+  // Compute overlap with tower
+  const curLeft = stackGame.curX;
+  const curRight = curLeft + stackGame.curW;
+  const twLeft = stackGame.towerLeft;
+  const twRight = twLeft + stackGame.towerW;
+  const overlapLeft = Math.max(curLeft, twLeft);
+  const overlapRight = Math.min(curRight, twRight);
+  const overlap = overlapRight - overlapLeft;
+  if (overlap <= 0.5) return endSkewerStack();
+  stackGame.score += 1;
+  stackGame.towerLeft = overlapLeft;
+  stackGame.towerW = overlap;
+  stackGame.curW = overlap;
+  stackGame.curX = 0;
+  stackGame.dir = 1;
+  // Add stacked visual
+  const tower = document.getElementById("stackTower");
+  if (tower) {
+    const block = document.createElement("div");
+    block.className = "stack-block";
+    block.style.left = stackGame.towerLeft + "%";
+    block.style.width = stackGame.towerW + "%";
+    block.style.bottom = (stackGame.score * 14) + "px";
+    block.textContent = ["🥩", "🌽", "🍖", "🌶️", "🧀"][stackGame.score % 5];
+    tower.appendChild(block);
+  }
+  setText("stackScore", String(stackGame.score));
+  if (stackGame.towerW < 4) endSkewerStack();
+}
+
+function endSkewerStack() {
+  if (stackGame.rafId) cancelAnimationFrame(stackGame.rafId);
+  stackGame.rafId = null;
+  stackGame.phase = "done";
+  document.getElementById("stackStartBtn").disabled = false;
+  document.getElementById("stackStartBtn").textContent = "Rigioca";
+  setText("stackStatus", `Altezza finale: ${stackGame.score}.`);
+  recordSimpleGameScore("skewerStack", stackGame.score);
+}
+
+// ── Scotti la Carne (whack) ──
+const whackGame = {
+  phase: "idle", score: 0, active: -1, endAt: 0, rafId: null, nextSpawnAt: 0, hideAt: 0,
+};
+
+function startWhackBurger() {
+  const p = requireActiveParticipant("giocare a Scotti la Carne");
+  if (!p || whackGame.phase === "playing") return;
+  whackGame.phase = "playing";
+  whackGame.score = 0;
+  whackGame.active = -1;
+  whackGame.endAt = performance.now() + 20000;
+  whackGame.nextSpawnAt = 0;
+  document.getElementById("whackStartBtn").disabled = true;
+  document.getElementById("whackStartBtn").textContent = "In corso…";
+  setText("whackStatus", "Colpisci tutto!");
+  whackLoop();
+}
+
+function whackLoop(ts) {
+  if (whackGame.phase !== "playing") return;
+  if (!ts) ts = performance.now();
+  if (ts >= whackGame.endAt) return endWhackBurger();
+  if (ts >= whackGame.nextSpawnAt && whackGame.active < 0) {
+    whackGame.active = Math.floor(Math.random() * 9);
+    whackGame.hideAt = ts + Math.max(500, 1100 - whackGame.score * 20);
+    whackRender();
+  }
+  if (whackGame.active >= 0 && ts >= whackGame.hideAt) {
+    whackGame.active = -1;
+    whackGame.nextSpawnAt = ts + 250 + Math.random() * 400;
+    whackRender();
+  }
+  setText("whackTimer", String(Math.max(0, Math.ceil((whackGame.endAt - ts) / 1000))));
+  whackGame.rafId = requestAnimationFrame(whackLoop);
+}
+
+function whackRender() {
+  const grid = document.getElementById("whackGrid");
+  if (!grid) return;
+  grid.querySelectorAll(".whack-cell").forEach(c => {
+    const idx = Number(c.dataset.cell);
+    c.classList.toggle("pop", idx === whackGame.active);
+    c.textContent = idx === whackGame.active ? "🍔" : "";
+  });
+  setText("whackScore", String(whackGame.score));
+}
+
+function whackHit(idx) {
+  if (whackGame.phase !== "playing") return;
+  if (idx === whackGame.active) {
+    whackGame.score += 1;
+    whackGame.active = -1;
+    whackGame.nextSpawnAt = performance.now() + 200 + Math.random() * 300;
+    whackRender();
+  } else {
+    whackGame.score = Math.max(0, whackGame.score - 1);
+    whackRender();
+  }
+}
+
+function endWhackBurger() {
+  if (whackGame.rafId) cancelAnimationFrame(whackGame.rafId);
+  whackGame.rafId = null;
+  whackGame.phase = "done";
+  whackGame.active = -1;
+  whackRender();
+  document.getElementById("whackStartBtn").disabled = false;
+  document.getElementById("whackStartBtn").textContent = "Rigioca";
+  setText("whackStatus", `Fine: ${whackGame.score} centrati.`);
+  recordSimpleGameScore("whackBurger", whackGame.score);
+}
+
+// ── Pinza d'Oro (multi-round precision) ──
+const tongGame = {
+  phase: "idle", round: 0, score: 0, pos: 0, dir: 1, rafId: null, locked: false,
+};
+
+function startTongPrecision() {
+  const p = requireActiveParticipant("giocare a Pinza d'Oro");
+  if (!p || tongGame.phase === "playing") return;
+  tongGame.phase = "playing";
+  tongGame.round = 0;
+  tongGame.score = 0;
+  tongGame.locked = false;
+  setText("tongStatus", "Ferma al centro!");
+  document.getElementById("tongStartBtn").disabled = true;
+  tongStartRound();
+}
+
+function tongStartRound() {
+  tongGame.round += 1;
+  tongGame.locked = false;
+  tongGame.pos = 5;
+  tongGame.dir = 1;
+  document.getElementById("tongLockBtn").disabled = false;
+  setText("tongRound", String(tongGame.round));
+  if (tongGame.rafId) cancelAnimationFrame(tongGame.rafId);
+  tongLoop();
+}
+
+function tongLoop() {
+  if (tongGame.phase !== "playing" || tongGame.locked) return;
+  const speed = 0.9 + tongGame.round * 0.25;
+  tongGame.pos += tongGame.dir * speed;
+  if (tongGame.pos >= 95) { tongGame.pos = 95; tongGame.dir = -1; }
+  if (tongGame.pos <= 5) { tongGame.pos = 5; tongGame.dir = 1; }
+  const cur = document.getElementById("tongCursor");
+  if (cur) cur.style.left = tongGame.pos + "%";
+  tongGame.rafId = requestAnimationFrame(tongLoop);
+}
+
+function tongLock() {
+  if (tongGame.phase !== "playing" || tongGame.locked) return;
+  tongGame.locked = true;
+  document.getElementById("tongLockBtn").disabled = true;
+  const distance = Math.abs(tongGame.pos - 50);
+  const points = Math.max(0, Math.round(20 - distance));
+  tongGame.score += points;
+  setText("tongScore", String(tongGame.score));
+  if (tongGame.round >= 5) return endTongPrecision();
+  setTimeout(tongStartRound, 700);
+}
+
+function endTongPrecision() {
+  tongGame.phase = "done";
+  if (tongGame.rafId) cancelAnimationFrame(tongGame.rafId);
+  tongGame.rafId = null;
+  document.getElementById("tongStartBtn").disabled = false;
+  document.getElementById("tongStartBtn").textContent = "Rigioca";
+  document.getElementById("tongLockBtn").disabled = true;
+  setText("tongStatus", `Totale: ${tongGame.score} su 100.`);
+  recordSimpleGameScore("tongPrecision", tongGame.score);
+}
+
+// ── Marinatura Mixer (memory match) ──
+const matchGame = {
+  phase: "idle", cards: [], flipped: [], matched: 0, startAt: 0,
+  total: 6, tickId: null,
+};
+
+function startMarinadeMatch() {
+  const p = requireActiveParticipant("giocare a Marinatura Mixer");
+  if (!p || matchGame.phase === "playing") return;
+  const icons = ["🧂", "🍋", "🧄", "🌶️", "🫒", "🍷"];
+  matchGame.cards = [...icons, ...icons]
+    .map((icon, i) => ({ icon, id: i, revealed: false, matched: false }))
+    .sort(() => Math.random() - 0.5);
+  matchGame.flipped = [];
+  matchGame.matched = 0;
+  matchGame.total = icons.length;
+  matchGame.phase = "playing";
+  matchGame.startAt = performance.now();
+  document.getElementById("matchStartBtn").disabled = true;
+  document.getElementById("matchStartBtn").textContent = "In corso…";
+  setText("matchStatus", "Trova tutte le coppie!");
+  matchRender();
+  if (matchGame.tickId) clearInterval(matchGame.tickId);
+  matchGame.tickId = setInterval(() => {
+    const elapsed = (performance.now() - matchGame.startAt) / 1000;
+    setText("matchTimer", elapsed.toFixed(1).replace(".", ","));
+  }, 100);
+}
+
+function matchRender() {
+  const grid = document.getElementById("matchGrid");
+  if (!grid) return;
+  grid.innerHTML = matchGame.cards.map((c, i) =>
+    `<button class="match-card ${c.matched ? "matched" : c.revealed ? "revealed" : ""}" type="button" onclick="matchFlip(${i})" ${c.matched || c.revealed ? "disabled" : ""}>${c.matched || c.revealed ? c.icon : "?"}</button>`
+  ).join("");
+  setText("matchPairs", `${matchGame.matched}/${matchGame.total}`);
+}
+
+function matchFlip(i) {
+  if (matchGame.phase !== "playing") return;
+  const card = matchGame.cards[i];
+  if (card.matched || card.revealed) return;
+  if (matchGame.flipped.length >= 2) return;
+  card.revealed = true;
+  matchGame.flipped.push(i);
+  matchRender();
+  if (matchGame.flipped.length === 2) {
+    const [a, b] = matchGame.flipped;
+    if (matchGame.cards[a].icon === matchGame.cards[b].icon) {
+      matchGame.cards[a].matched = true;
+      matchGame.cards[b].matched = true;
+      matchGame.matched += 1;
+      matchGame.flipped = [];
+      matchRender();
+      if (matchGame.matched === matchGame.total) endMarinadeMatch();
+    } else {
+      setTimeout(() => {
+        matchGame.cards[a].revealed = false;
+        matchGame.cards[b].revealed = false;
+        matchGame.flipped = [];
+        matchRender();
+      }, 700);
+    }
+  }
+}
+
+function endMarinadeMatch() {
+  matchGame.phase = "done";
+  if (matchGame.tickId) clearInterval(matchGame.tickId);
+  matchGame.tickId = null;
+  const elapsedMs = Math.round(performance.now() - matchGame.startAt);
+  document.getElementById("matchStartBtn").disabled = false;
+  document.getElementById("matchStartBtn").textContent = "Rigioca";
+  setText("matchStatus", `Fatto in ${(elapsedMs / 1000).toFixed(1)}s.`);
+  recordSimpleGameScore("marinadeMatch", elapsedMs);
+}
+
+// ── Cottura a Puntino (hold timing) ──
+const HOLD_MAX_SECONDS = 6;
+const HOLD_ZONE_SECONDS = 0.2; // ± around target
+const holdCookGame = {
+  phase: "idle", target: 3.0, startAt: 0, rafId: null, heldMs: 0,
+};
+
+function startHoldTarget() {
+  holdCookGame.target = +(2 + Math.random() * 2.5).toFixed(1);
+  setText("holdTarget", holdCookGame.target.toFixed(1).replace(".", ","));
+  const mark = document.getElementById("holdTargetMark");
+  if (mark) mark.style.left = ((holdCookGame.target / HOLD_MAX_SECONDS) * 100) + "%";
+  const zone = document.getElementById("holdTargetZone");
+  if (zone) {
+    const zoneLeft = ((holdCookGame.target - HOLD_ZONE_SECONDS) / HOLD_MAX_SECONDS) * 100;
+    const zoneWidth = ((HOLD_ZONE_SECONDS * 2) / HOLD_MAX_SECONDS) * 100;
+    zone.style.left = zoneLeft + "%";
+    zone.style.width = zoneWidth + "%";
+  }
+  // Reset fill and label
+  const fill = document.getElementById("holdFill");
+  if (fill) { fill.style.width = "0%"; fill.classList.remove("in-zone", "over"); }
+  setText("holdTimeLabel", "0,0s");
+  setText("holdResult", "");
+}
+
+function holdStart() {
+  const p = requireActiveParticipant("giocare a Cottura a Puntino");
+  if (!p) return;
+  if (holdCookGame.phase === "idle" || holdCookGame.phase === "done") {
+    startHoldTarget();
+  }
+  holdCookGame.phase = "holding";
+  holdCookGame.startAt = performance.now();
+  holdCookGame.heldMs = 0;
+  setText("holdStatus", "Premi fino al momento giusto...");
+  document.getElementById("holdPad")?.classList.add("pressed");
+  holdLoop();
+}
+
+function holdLoop() {
+  if (holdCookGame.phase !== "holding") return;
+  holdCookGame.heldMs = performance.now() - holdCookGame.startAt;
+  const heldSec = holdCookGame.heldMs / 1000;
+  const pct = Math.min(100, (heldSec / HOLD_MAX_SECONDS) * 100);
+  const fill = document.getElementById("holdFill");
+  if (fill) {
+    fill.style.width = pct + "%";
+    const diff = Math.abs(heldSec - holdCookGame.target);
+    fill.classList.toggle("in-zone", diff <= HOLD_ZONE_SECONDS);
+    fill.classList.toggle("over", heldSec > holdCookGame.target + HOLD_ZONE_SECONDS);
+  }
+  setText("holdTimeLabel", heldSec.toFixed(1).replace(".", ",") + "s");
+  if (heldSec >= HOLD_MAX_SECONDS) return holdEnd(); // auto-stop at max
+  holdCookGame.rafId = requestAnimationFrame(holdLoop);
+}
+
+function holdEnd() {
+  if (holdCookGame.phase !== "holding") return;
+  if (holdCookGame.rafId) cancelAnimationFrame(holdCookGame.rafId);
+  holdCookGame.rafId = null;
+  holdCookGame.phase = "done";
+  document.getElementById("holdPad")?.classList.remove("pressed");
+  const heldSec = holdCookGame.heldMs / 1000;
+  const diff = Math.abs(heldSec - holdCookGame.target);
+  const score = Math.max(0, Math.round(100 - diff * 50));
+  let verdict = "Perfetto!", tone = "positive";
+  if (diff > 0.05 && diff <= 0.2) { verdict = "Molto bene"; tone = "positive"; }
+  else if (diff > 0.2 && diff <= 0.5) { verdict = "Ci sei quasi"; tone = "warning"; }
+  else if (diff > 0.5) { verdict = "Ritenta"; tone = "negative"; }
+  const resultEl = document.getElementById("holdResult");
+  if (resultEl) {
+    resultEl.innerHTML = `
+      <div class="hold-result-top">
+        <span class="hold-result-verdict tone-${tone}">${verdict}</span>
+        <span class="hold-result-score">${score}<span class="hold-result-score-max">/100</span></span>
+      </div>
+      <div class="hold-result-meta">Hai tenuto ${heldSec.toFixed(2).replace(".", ",")}s · target ${holdCookGame.target.toFixed(1).replace(".", ",")}s · differenza ${diff.toFixed(2).replace(".", ",")}s</div>
+    `;
+  }
+  setText("holdStatus", verdict);
+  recordSimpleGameScore("holdCook", score);
+}
+
+// ── Calcola il Conto ──
+const calcGame = {
+  phase: "idle", round: 0, correct: 0, current: null, total: 10,
+};
+
+function startCalcCheck() {
+  const p = requireActiveParticipant("giocare a Calcola il Conto");
+  if (!p || calcGame.phase === "playing") return;
+  calcGame.phase = "playing";
+  calcGame.round = 0;
+  calcGame.correct = 0;
+  document.getElementById("calcStartBtn").disabled = true;
+  document.getElementById("calcStartBtn").textContent = "In corso…";
+  setText("calcStatus", "Il più veloce possibile!");
+  calcNextQuestion();
+}
+
+function calcNextQuestion() {
+  calcGame.round += 1;
+  if (calcGame.round > calcGame.total) return endCalcCheck();
+  // Generate a BBQ-themed expression
+  const type = Math.floor(Math.random() * 3);
+  let question, answer;
+  if (type === 0) {
+    const n = 2 + Math.floor(Math.random() * 6);
+    const price = (2 + Math.floor(Math.random() * 8)) + 0.5 * (Math.random() < 0.5 ? 0 : 1);
+    const items = ["birre", "panini", "hamburger", "spiedini", "salsicce"][Math.floor(Math.random() * 5)];
+    question = `${n} ${items} × ${price.toFixed(2).replace(".", ",")} €`;
+    answer = +(n * price).toFixed(2);
+  } else if (type === 1) {
+    const total = (20 + Math.floor(Math.random() * 80));
+    const people = 2 + Math.floor(Math.random() * 6);
+    question = `${total} € diviso ${people} persone`;
+    answer = +(total / people).toFixed(2);
+  } else {
+    const a = 10 + Math.floor(Math.random() * 40);
+    const b = 5 + Math.floor(Math.random() * 30);
+    const c = 2 + Math.floor(Math.random() * 15);
+    question = `${a} + ${b} - ${c} €`;
+    answer = a + b - c;
+  }
+  // Make 4 options
+  const options = new Set([answer]);
+  while (options.size < 4) {
+    const noise = (Math.random() - 0.5) * answer * 0.4;
+    const v = +(answer + noise).toFixed(2);
+    if (v !== answer && v > 0) options.add(v);
+  }
+  const shuffled = [...options].sort(() => Math.random() - 0.5);
+  calcGame.current = { question, answer, options: shuffled };
+  setText("calcQuestion", question);
+  setText("calcRound", String(calcGame.round));
+  const box = document.getElementById("calcOptions");
+  if (box) box.innerHTML = shuffled.map(opt =>
+    `<button class="calc-option" type="button" onclick="calcAnswer(${opt})">${opt.toFixed(2).replace(".", ",")} €</button>`).join("");
+}
+
+function calcAnswer(val) {
+  if (calcGame.phase !== "playing" || !calcGame.current) return;
+  if (Math.abs(val - calcGame.current.answer) < 0.01) {
+    calcGame.correct += 1;
+    setText("calcCorrect", String(calcGame.correct));
+    showToast("✓", `Giusto: ${calcGame.current.answer.toFixed(2)} €`, "good");
+  } else {
+    showToast("✗", `Era ${calcGame.current.answer.toFixed(2).replace(".", ",")} €`, "warning");
+  }
+  calcNextQuestion();
+}
+
+function endCalcCheck() {
+  calcGame.phase = "done";
+  document.getElementById("calcStartBtn").disabled = false;
+  document.getElementById("calcStartBtn").textContent = "Rigioca";
+  setText("calcStatus", `Fine: ${calcGame.correct}/${calcGame.total} giuste.`);
+  setText("calcQuestion", "—");
+  const box = document.getElementById("calcOptions");
+  if (box) box.innerHTML = "";
+  recordSimpleGameScore("calcCheck", calcGame.correct);
+}
+
+// ── Conta le Salsicce ──
+const countGame = {
+  phase: "idle", round: 0, correct: 0, currentCount: 0, total: 8,
+};
+
+function startCountSausage() {
+  const p = requireActiveParticipant("giocare a Conta le Salsicce");
+  if (!p || countGame.phase === "playing") return;
+  countGame.phase = "playing";
+  countGame.round = 0;
+  countGame.correct = 0;
+  document.getElementById("countStartBtn").disabled = true;
+  document.getElementById("countStartBtn").textContent = "In corso…";
+  setText("countStatus", "Guarda bene la griglia!");
+  countNextRound();
+}
+
+function countNextRound() {
+  countGame.round += 1;
+  if (countGame.round > countGame.total) return endCountSausage();
+  setText("countRound", String(countGame.round));
+  // Build grid of 18 random items
+  const size = 18;
+  const target = "🌭";
+  const fillers = ["🥩", "🌽", "🍖", "🌶️", "🧀", "🧄", "🍋"];
+  const count = 2 + Math.floor(Math.random() * 7); // 2–8 sausages
+  countGame.currentCount = count;
+  const grid = Array(size).fill(null).map((_, i) => i < count ? target : fillers[Math.floor(Math.random() * fillers.length)]);
+  grid.sort(() => Math.random() - 0.5);
+  const stage = document.getElementById("countStage");
+  if (stage) stage.innerHTML = grid.map(e => `<span class="count-cell">${e}</span>`).join("");
+  const box = document.getElementById("countOptions");
+  if (box) box.innerHTML = "<p class=\"card-copy\" style=\"margin:8px 0\">Tra 2s ti chiedo quante erano…</p>";
+  setTimeout(() => {
+    if (stage) stage.innerHTML = "";
+    // Offer choices: correct + 3 distractors nearby
+    const choices = new Set([count]);
+    while (choices.size < 4) {
+      const delta = Math.floor(Math.random() * 5) - 2;
+      const v = count + delta;
+      if (v > 0 && v !== count) choices.add(v);
+    }
+    const shuffled = [...choices].sort(() => Math.random() - 0.5);
+    if (box) box.innerHTML = shuffled.map(n =>
+      `<button class="calc-option" type="button" onclick="countAnswer(${n})">${n} 🌭</button>`).join("");
+  }, 2000);
+}
+
+function countAnswer(n) {
+  if (countGame.phase !== "playing") return;
+  if (n === countGame.currentCount) {
+    countGame.correct += 1;
+    setText("countCorrect", String(countGame.correct));
+    showToast("✓", `Esatto: ${n} salsicce.`, "good");
+  } else {
+    showToast("✗", `Erano ${countGame.currentCount}.`, "warning");
+  }
+  countNextRound();
+}
+
+function endCountSausage() {
+  countGame.phase = "done";
+  document.getElementById("countStartBtn").disabled = false;
+  document.getElementById("countStartBtn").textContent = "Rigioca";
+  setText("countStatus", `Fine: ${countGame.correct}/${countGame.total} giuste.`);
+  const box = document.getElementById("countOptions");
+  if (box) box.innerHTML = "";
+  recordSimpleGameScore("countSausage", countGame.correct);
+}
+
+// Initialize target for Cottura a Puntino on first render + swipe gestures
+function initNewGamesUI() {
+  const holdTargetEl = document.getElementById("holdTarget");
+  if (holdTargetEl) startHoldTarget();
+
+  // Swipe: Snake — change direction by swiping on the grid
+  addSwipeHandler(document.getElementById("snakeGrid"), (dir) => {
+    snakeSetDir(dir);
+  }, { threshold: 18, preventScroll: true });
+
+  // Swipe: Brace Catcher — swipe left/right to move player
+  addSwipeHandler(document.getElementById("catcherStage"), (dir) => {
+    if (catcherGame.phase !== "playing") return;
+    if (dir === "left") catcherGame.playerX = Math.max(5, catcherGame.playerX - 18);
+    if (dir === "right") catcherGame.playerX = Math.min(95, catcherGame.playerX + 18);
+  }, { threshold: 20, preventScroll: true });
+
+  // Swipe: Salsiccia Jump — swipe up to jump (alternative to tap)
+  addSwipeHandler(document.getElementById("sjumpStage"), (dir) => {
+    if (dir === "up") sjumpJump();
+  }, { threshold: 20, preventScroll: true });
+
+  // Keyboard support for Snake (arrow keys)
+  document.addEventListener("keydown", (e) => {
+    if (snakeGame.phase !== "playing") return;
+    const map = { ArrowUp: "up", ArrowDown: "down", ArrowLeft: "left", ArrowRight: "right" };
+    if (map[e.key]) {
+      e.preventDefault();
+      snakeSetDir(map[e.key]);
+    }
+  });
 }
 
 function updateGrillUi() {
@@ -1541,6 +3390,7 @@ function drawPartyChallenge() {
   renderPartyChallenge();
   renderGamesLeaderboard();
   showToast("Sfida BBQ", `${activePerson.name} ha pescato "${chosen.title}".`, "good");
+  notifyOthers("Sfida BBQ pescata", `${activePerson.name} ha pescato "${chosen.title}".`, "challenge", "/#giochi");
 }
 
 function addExpense() {
@@ -1583,6 +3433,7 @@ function addExpense() {
   scheduleSave();
   renderAll();
   showToast("Spesa registrata", `${labelForPerson(personId)} ha anticipato ${formatMoney(expense.amount)} per "${description}".`, "good");
+  notifyOthers("Nuova spesa", `${labelForPerson(personId)} ha anticipato ${formatMoney(expense.amount)} per "${description}".`, "expense", "/#spese");
 }
 
 function addExpenseComment(expenseId) {
@@ -1610,6 +3461,7 @@ function addExpenseComment(expenseId) {
   renderExpenses();
   renderSpendingLeaderboard();
   showToast("Commento aggiunto", `Nota salvata come ${activePerson.avatar} ${activePerson.name}.`, "good");
+  notifyOthers("Nuovo commento", `${activePerson.name} ha commentato "${expense.description}": ${text}`, "expense-comment", "/#spese");
 }
 
 function editExpense(expenseId) {
@@ -1662,6 +3514,7 @@ function editExpense(expenseId) {
           scheduleSave();
           renderAll();
           showToast("Spesa aggiornata", "Le modifiche sono state salvate.", "good");
+          notifyOthers("Spesa modificata", `"${description}" ora è ${formatMoney(expense.amount)} (${labelForPerson(personId)}).`, "expense", "/#spese");
           return true;
         }
       }
@@ -1686,6 +3539,7 @@ function confirmDeleteExpense(expenseId) {
           scheduleSave();
           renderAll();
           showToast("Spesa eliminata", `"${expense.description}" è sparita dal feed.`, "warning");
+          notifyOthers("Spesa eliminata", `"${expense.description}" è stata rimossa dal feed.`, "expense", "/#spese");
           return true;
         }
       }
@@ -1723,13 +3577,13 @@ function addPerson() {
     }
   }
 
-  if (!activeParticipantId) activeParticipantId = newParticipant.id;
   persistActiveParticipant();
 
   document.getElementById("newPersonName").value = "";
   scheduleSave();
   renderAll();
   showToast("Partecipante aggiunto", `${newParticipant.avatar} ${newParticipant.name} è entrato/a nel gruppo.`, "good");
+  notifyOthers("Nuovo partecipante", `${newParticipant.avatar} ${newParticipant.name} è entrato/a nel gruppo.`, "group", "/#gruppo");
 }
 
 function renamePerson(personId, newName) {
@@ -1784,7 +3638,7 @@ function removePerson(personId) {
   state.expenses = state.expenses.filter(expense => expense.personId !== personId);
   state.participants = state.participants.filter(item => item.id !== personId);
   if (activeParticipantId === personId) {
-    activeParticipantId = state.participants[0]?.id || null;
+    activeParticipantId = null;
     persistActiveParticipant();
   }
 
@@ -1911,6 +3765,7 @@ function addShoppingItem() {
   scheduleSave();
   renderShoppingList();
   showToast("Lista aggiornata", `${activePerson.name} ha aggiunto "${text}".`, "good");
+  notifyOthers("Lista della spesa", `${activePerson.name} ha aggiunto "${text}" alla lista.`, "shopping", "/#lista");
 }
 
 function toggleShoppingItem(index) {
@@ -1919,6 +3774,13 @@ function toggleShoppingItem(index) {
   item.checked = !item.checked;
   scheduleSave();
   renderShoppingList();
+  const who = getActiveParticipant()?.name || "Qualcuno";
+  notifyOthers(
+    item.checked ? "Lista: preso!" : "Lista: di nuovo da prendere",
+    item.checked ? `${who} ha segnato "${item.text}" come preso.` : `${who} ha rimesso "${item.text}" da prendere.`,
+    "shopping",
+    "/#lista"
+  );
 }
 
 function removeShoppingItem(index) {
@@ -1944,13 +3806,14 @@ function sendChatMessage() {
     timestamp: Date.now()
   });
   input.value = "";
-  scheduleSave();
   renderChat();
+  flushSave();
 
   const normalized = text.toLowerCase();
   if (normalized.includes("birra")) {
     showToast("Chat utile", "Parola chiave rilevata: birra. Finalmente si parla seriamente.", "good");
   }
+  notifyOthers(`${activePerson.avatar} ${activePerson.name}`, text, "chat", "/#chat");
 }
 
 function addWishlistItem() {
@@ -1976,6 +3839,7 @@ function addWishlistItem() {
   scheduleSave();
   renderWishlist();
   showToast("Wishlist aggiornata", `${activePerson.name} ha aggiunto "${text}".`, "good");
+  notifyOthers("Nuovo desiderio wishlist", `${activePerson.name} ha aggiunto "${text}".`, "wishlist", "/#wishlist");
 }
 
 function claimWishlistItem(itemId) {
@@ -1989,6 +3853,7 @@ function claimWishlistItem(itemId) {
   scheduleSave();
   renderWishlist();
   showToast("Voce presa in carico", `${activePerson.name} si occupa di "${item.text}".`, "good");
+  notifyOthers("Wishlist", `${activePerson.name} si occupa di "${item.text}".`, "wishlist", "/#wishlist");
 }
 
 function assignWishlistItem(itemId) {
@@ -2031,6 +3896,7 @@ function assignWishlistItem(itemId) {
           scheduleSave();
           renderWishlist();
           showToast("Voce assegnata", `${target.name} ora deve rispondere per "${item.text}".`, "good");
+          notifyOthers("Wishlist assegnata", `${activePerson.name} ha assegnato "${item.text}" a ${target.name}.`, "wishlist", "/#wishlist");
           return true;
         }
       }
@@ -2048,11 +3914,13 @@ function respondWishlistItem(itemId, accepted) {
     item.status = "accepted";
     spawnConfetti();
     showToast("Assegnazione accettata", `${activePerson.name} ha confermato "${item.text}".`, "good");
+    notifyOthers("Wishlist confermata", `${activePerson.name} ha confermato "${item.text}".`, "wishlist", "/#wishlist");
   } else {
     item.status = "declined";
     item.assignedToId = null;
     item.assignedById = null;
     showToast("Assegnazione rifiutata", `${activePerson.name} ha rimesso "${item.text}" tra le voci aperte.`, "warning");
+    notifyOthers("Wishlist rifiutata", `${activePerson.name} ha rimesso "${item.text}" tra le voci aperte.`, "wishlist", "/#wishlist");
   }
 
   scheduleSave();
@@ -2203,7 +4071,7 @@ function resetAll() {
           }
 
           state = cloneDefaultState();
-          activeParticipantId = state.participants[0]?.id || null;
+          activeParticipantId = null;
           persistActiveParticipant();
           expandedExpenseId = null;
           nextQuizQuestion();
@@ -2234,9 +4102,10 @@ function celebrateSettlement() {
   }
 }
 
-function openModal({ title, text = "", bodyHtml = "", actions = [] }) {
+function openModal({ title, text = "", bodyHtml = "", actions = [], lockDismissal = false }) {
   const overlay = document.getElementById("modalOverlay");
   const shell = document.getElementById("modalShell");
+  overlay.dataset.lockDismissal = lockDismissal ? "true" : "false";
   shell.innerHTML = `
     <h3>${escapeHtml(title)}</h3>
     ${text ? `<p>${escapeHtml(text)}</p>` : ""}
@@ -2264,10 +4133,41 @@ function openModal({ title, text = "", bodyHtml = "", actions = [] }) {
   if (firstInput) firstInput.focus();
 }
 
-function closeModal() {
+function closeModal(force = false) {
   const overlay = document.getElementById("modalOverlay");
+  if (!force && overlay.dataset.lockDismissal === "true") return;
   overlay.hidden = true;
+  overlay.dataset.lockDismissal = "false";
   document.body.style.overflow = "";
+}
+
+function openProfileSelectionPrompt() {
+  if (profileSelectionPromptOpen || getActiveParticipant() || state.participants.length === 0) return;
+  profileSelectionPromptOpen = true;
+  openModal({
+    title: "Seleziona il tuo profilo",
+    text: "Al primo avvio devi scegliere chi sei. Non viene impostato nessun profilo di default.",
+    bodyHtml: `
+      <div class="profile-selection-grid">
+        ${state.participants.map(participant => `
+          <button class="identity-chip profile-choice" type="button" onclick="confirmProfileSelection('${participant.id}')">
+            <span class="avatar">${participant.avatar}</span>
+            <span>${escapeHtml(participant.name)}</span>
+          </button>
+        `).join("")}
+      </div>
+    `,
+    actions: [],
+    lockDismissal: true
+  });
+}
+
+function confirmProfileSelection(participantId) {
+  const participant = personById(participantId);
+  if (!participant) return;
+  profileSelectionPromptOpen = false;
+  setActiveParticipant(participantId);
+  closeModal(true);
 }
 
 function showToast(title, text, tone = "") {
@@ -2303,6 +4203,7 @@ function requireActiveParticipant(actionLabel) {
   const activePerson = getActiveParticipant();
   if (!activePerson) {
     showToast("Profilo richiesto", `Prima devi selezionare chi sta usando l'app per ${actionLabel}.`, "warning");
+    openProfileSelectionPrompt();
     if (activePrimaryTab !== "organizzazione") setPrimaryTab("organizzazione");
     if (activeOrgTab !== "gruppo") setOrgTab("gruppo");
     return null;
@@ -2342,28 +4243,367 @@ function populateEmojiGrid() {
   `).join("");
 }
 
+// ── Push notifications ──
+const pushState = {
+  supported: false,
+  permission: "default",
+  subscription: null,
+  registration: null,
+  vapidPublicKey: null,
+  pending: false,
+  activeParticipantIds: new Set(),
+};
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const output = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) output[i] = raw.charCodeAt(i);
+  return output;
+}
+
+async function initPushNotifications() {
+  pushState.supported = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
+  const bar = document.getElementById("notificationsBar");
+  const toggle = document.getElementById("notificationsToggle");
+  if (!bar || !toggle) return;
+
+  if (!pushState.supported) {
+    bar.classList.add("unsupported");
+    toggle.disabled = true;
+    setText("notificationsMeta", "Questo dispositivo/browser non supporta le notifiche push. Installa la webapp sul telefono per abilitarle.");
+    return;
+  }
+
+  toggle.addEventListener("click", togglePushSubscription);
+
+  try {
+    pushState.registration = await navigator.serviceWorker.register("/sw.js");
+  } catch (err) {
+    console.warn("Service worker registration failed:", err);
+    bar.classList.add("unsupported");
+    toggle.disabled = true;
+    setText("notificationsMeta", "Impossibile registrare il service worker. Le notifiche non sono disponibili.");
+    return;
+  }
+
+  pushState.permission = Notification.permission;
+  try {
+    pushState.subscription = await pushState.registration.pushManager.getSubscription();
+  } catch {}
+
+  try {
+    const res = await fetch("/api/push/public-key");
+    const data = await res.json();
+    pushState.vapidPublicKey = data.publicKey;
+  } catch (err) {
+    console.warn("Failed to fetch VAPID key:", err);
+  }
+
+  updatePushUI();
+  refreshActiveParticipants();
+}
+
+function updatePushUI() {
+  const toggle = document.getElementById("notificationsToggle");
+  const bar = document.getElementById("notificationsBar");
+  if (!toggle || !bar) return;
+
+  const active = Boolean(pushState.subscription) && pushState.permission === "granted";
+  toggle.setAttribute("aria-checked", active ? "true" : "false");
+  toggle.setAttribute("aria-label", active ? "Disattiva notifiche push" : "Attiva notifiche push");
+  toggle.disabled = pushState.pending || !pushState.supported;
+
+  const activePerson = getActiveParticipant();
+  const isPillo = activePerson && /pillo/i.test(activePerson.name);
+
+  let meta;
+  if (!pushState.supported) {
+    meta = "Questo dispositivo/browser non supporta le notifiche push. Installa la webapp sul telefono per abilitarle.";
+  } else if (pushState.permission === "denied") {
+    meta = "Hai bloccato le notifiche da questo browser. Sbloccale dalle impostazioni del sito per attivarle.";
+  } else if (active) {
+    meta = isPillo
+      ? "Attive. Pillo, adesso non hai più scuse: ogni cosa che fa il gruppo ti arriva puntuale."
+      : "Attive. Ti arrivano le novità del gruppo (spese, commenti, chat, wishlist...).";
+  } else {
+    meta = isPillo
+      ? '«No, non ci sono le notifiche…» Ecco, Pillo, eccole qui. Attivale e smetti di inventare scuse per non leggere la chat.'
+      : "Ti avvisano quando il gruppo aggiunge spese, commenti o messaggi.";
+  }
+  setText("notificationsMeta", meta);
+}
+
+async function togglePushSubscription() {
+  if (pushState.pending || !pushState.supported) return;
+  pushState.pending = true;
+  updatePushUI();
+
+  try {
+    if (pushState.subscription) {
+      await unsubscribePush();
+      showToast("Notifiche disattivate", "Non riceverai più i push dal gruppo su questo dispositivo.", "warning");
+    } else {
+      await subscribePush();
+      const activePerson = getActiveParticipant();
+      const isPillo = activePerson && /pillo/i.test(activePerson.name);
+      showToast(
+        isPillo ? "Notifiche attivate, Pillo" : "Notifiche attivate",
+        isPillo
+          ? "Benvenuto nel 2020. Ora la chat la leggi anche tu."
+          : "Ti avviseremo quando qualcuno aggiorna il gruppo.",
+        "good"
+      );
+    }
+  } catch (err) {
+    console.warn("Push toggle failed:", err);
+    showToast("Notifiche non attivate", err.message || "Qualcosa è andato storto. Controlla i permessi del browser.", "bad");
+  }
+
+  pushState.pending = false;
+  updatePushUI();
+}
+
+async function subscribePush() {
+  if (!pushState.vapidPublicKey) {
+    try {
+      const res = await fetch("/api/push/public-key");
+      const data = await res.json();
+      pushState.vapidPublicKey = data.publicKey;
+    } catch (err) {
+      console.warn("Retry VAPID fetch failed:", err);
+    }
+  }
+  if (!pushState.vapidPublicKey) throw new Error("Chiave VAPID non disponibile. Controlla la connessione e riprova.");
+
+  const permission = await Notification.requestPermission();
+  pushState.permission = permission;
+  if (permission !== "granted") throw new Error("Permesso notifiche negato");
+
+  const sub = await pushState.registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(pushState.vapidPublicKey),
+  });
+
+  const activePerson = getActiveParticipant();
+  const label = activePerson ? activePerson.name : null;
+  const participantId = activePerson ? activePerson.id : null;
+
+  const res = await fetch("/api/push/subscribe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ subscription: sub, label, participantId }),
+  });
+  if (!res.ok) throw new Error("Registrazione subscription fallita");
+
+  pushState.subscription = sub;
+  refreshActiveParticipants();
+}
+
+async function refreshActiveParticipants() {
+  try {
+    const res = await fetch("/api/push/active-participants");
+    if (!res.ok) return;
+    const data = await res.json();
+    pushState.activeParticipantIds = new Set(data.participantIds || []);
+    renderIdentityBadges();
+  } catch {}
+}
+
+function renderIdentityBadges() {
+  document.querySelectorAll(".identity-chip").forEach(chip => {
+    const id = chip.dataset.participantId;
+    if (!id) return;
+    if (pushState.activeParticipantIds.has(id)) {
+      chip.classList.add("has-push");
+    } else {
+      chip.classList.remove("has-push");
+    }
+  });
+}
+
+async function updateSubscriptionParticipant() {
+  if (!pushState.subscription) return;
+  const activePerson = getActiveParticipant();
+  if (!activePerson) return;
+  try {
+    await fetch("/api/push/update-participant", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        endpoint: pushState.subscription.endpoint,
+        participantId: activePerson.id,
+      }),
+    });
+    refreshActiveParticipants();
+  } catch (err) {
+    console.warn("update participant failed:", err);
+  }
+}
+
+async function unsubscribePush() {
+  const sub = pushState.subscription;
+  if (!sub) return;
+  try {
+    await fetch("/api/push/unsubscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ endpoint: sub.endpoint }),
+    });
+  } catch {}
+  try { await sub.unsubscribe(); } catch {}
+  pushState.subscription = null;
+  refreshActiveParticipants();
+}
+
+function notifyOthers(title, body, tag = "grigliata", url = "/") {
+  if (!title || !body) return;
+  const endpoint = pushState.subscription ? pushState.subscription.endpoint : null;
+  fetch("/api/push/notify", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title, body, tag, url, excludeEndpoint: endpoint }),
+  }).catch(err => console.warn("notify failed:", err));
+}
+
+// ── Bottom nav navigation ──
+// Map a destination key to a section name. Sections in the "more" sheet
+// aren't in the bottom nav but are valid navigation targets.
+const BOTTOM_NAV_SLOTS = ["home", "spese", "chat", "lista", "altro"];
+const MORE_SHEET_DESTINATIONS = ["regolamento", "wishlist", "gruppo", "giochi", "impostazioni"];
+const BOTTOM_NAV_DESTINATIONS = Object.fromEntries(
+  SECTIONS.filter(s => s !== "dev").map(s => [s, s])
+);
+
+function navigateTo(destKey) {
+  // Accept aliases
+  const aliases = { conti: "regolamento", admin: "impostazioni" };
+  const section = aliases[destKey] || destKey;
+  if (!BOTTOM_NAV_DESTINATIONS[section]) return;
+  setSection(section);
+  updateBottomNavActive();
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+function updateBottomNavActive() {
+  const nav = document.getElementById("bottomNav");
+  if (!nav) return;
+  // If active section is one of the direct bottom-nav slots, highlight that.
+  // Otherwise highlight "altro".
+  const activeKey = BOTTOM_NAV_SLOTS.includes(activeSection) ? activeSection : "altro";
+  nav.querySelectorAll(".bottom-nav-item").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.dest === activeKey);
+  });
+}
+
+function openMoreSheet() {
+  const overlay = document.getElementById("moreSheetOverlay");
+  if (!overlay) return;
+  overlay.hidden = false;
+  document.body.style.overflow = "hidden";
+}
+
+function closeMoreSheet() {
+  const overlay = document.getElementById("moreSheetOverlay");
+  if (!overlay) return;
+  overlay.hidden = true;
+  document.body.style.overflow = "";
+}
+
+function consumeNavigationHash() {
+  const hash = (location.hash || "").replace(/^#/, "").toLowerCase();
+  if (!hash) return false;
+  // Map "regolamento" / "conti" both to "regolamento"
+  const aliases = { conti: "regolamento" };
+  const dest = aliases[hash] || hash;
+  if (BOTTOM_NAV_DESTINATIONS[dest]) {
+    navigateTo(dest);
+    // Clear the hash so re-opening the app doesn't keep navigating back
+    history.replaceState(null, "", location.pathname + location.search);
+    return true;
+  }
+  return false;
+}
+
+function openQuickExpense() {
+  navigateTo("spese");
+  setTimeout(() => {
+    const descInput = document.getElementById("expenseDescInput");
+    if (descInput) {
+      descInput.scrollIntoView({ block: "center", behavior: "smooth" });
+      setTimeout(() => descInput.focus(), 250);
+    }
+  }, 100);
+}
+
+// ── Install guide modal ──
+function openInstallGuide() {
+  const ua = navigator.userAgent;
+  const isIOS = /iPad|iPhone|iPod/.test(ua) && !window.MSStream;
+  const defaultTab = isIOS ? "ios" : "android";
+
+  const steps = {
+    ios: [
+      'Apri grigliata.vincenzo-rana.it in <strong>Safari</strong> (non Chrome o altri browser).',
+      'Tocca il pulsante <strong>Condividi</strong> (il quadrato con la freccia in su) nella barra in basso.',
+      'Scorri e tocca <strong>"Aggiungi a Home"</strong>.',
+      'Conferma con <strong>"Aggiungi"</strong>. Troverai l\'icona 🔥 nella schermata principale.',
+      'Apri l\'app dall\'icona nella home, poi attiva le notifiche dall\'interruttore qui sopra e dai il permesso quando richiesto.',
+    ],
+    android: [
+      'Apri grigliata.vincenzo-rana.it in <strong>Chrome</strong> o Edge.',
+      'Tocca il menu <strong>⋮ (tre puntini)</strong> in alto a destra.',
+      'Scegli <strong>"Installa app"</strong> o <strong>"Aggiungi a schermata Home"</strong>.',
+      'Conferma con <strong>"Installa"</strong>. L\'app apparirà tra le tue app.',
+      'Apri l\'app dall\'icona, poi attiva le notifiche dall\'interruttore qui sopra e accetta il permesso.',
+    ],
+  };
+
+  const renderSteps = (platform) => steps[platform].map((step, i) =>
+    `<li><span class="install-guide-step-num">${i + 1}</span><span>${step}</span></li>`
+  ).join("");
+
+  openModal({
+    title: "Installa l'app sul telefono",
+    text: "Per ricevere le notifiche push devi aggiungere la webapp alla schermata principale. Segui i passi per il tuo sistema.",
+    bodyHtml: `
+      <div class="install-guide-platforms" role="tablist">
+        <button type="button" data-platform="ios" class="${defaultTab === "ios" ? "active" : ""}" role="tab">iOS (iPhone/iPad)</button>
+        <button type="button" data-platform="android" class="${defaultTab === "android" ? "active" : ""}" role="tab">Android</button>
+      </div>
+      <ol class="install-guide-steps" id="installGuideSteps">${renderSteps(defaultTab)}</ol>
+    `,
+    actions: [
+      { label: "Chiudi", className: "btn-primary" },
+    ],
+  });
+
+  document.querySelectorAll(".install-guide-platforms button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".install-guide-platforms button").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+      document.getElementById("installGuideSteps").innerHTML = renderSteps(btn.dataset.platform);
+    });
+  });
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   loadPreferences();
   populateEmojiGrid();
 
   await loadStateFromServer();
-  ensureActiveParticipant();
 
   document.querySelectorAll(".primary-tab").forEach(button => {
-    button.addEventListener("click", () => setPrimaryTab(button.dataset.tab));
-  });
-
-  document.querySelectorAll(".sub-tab").forEach(button => {
-    button.addEventListener("click", () => setOrgTab(button.dataset.orgTab));
+    button.addEventListener("click", () => setSection(button.dataset.section));
   });
 
   setupArrowKeyNavigation(document.querySelector(".primary-nav"), ".primary-tab", button => {
-    setPrimaryTab(button.dataset.tab);
+    setSection(button.dataset.section);
   });
 
-  setupArrowKeyNavigation(document.querySelector(".sub-nav"), ".sub-tab", button => {
-    setOrgTab(button.dataset.orgTab);
-  });
+  // Apply initial section now that panels exist
+  setSection(activeSection);
 
   document.querySelectorAll("#balanceViewToggle button").forEach(button => {
     button.addEventListener("click", () => {
@@ -2395,6 +4635,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     if (!document.getElementById("emojiPickerOverlay").hidden) {
       closeEmojiPicker();
+      return;
+    }
+    if (!document.getElementById("moreSheetOverlay").hidden) {
+      closeMoreSheet();
     }
   });
 
@@ -2431,11 +4675,64 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   nextQuizQuestion();
+  initNewGamesUI();
   renderAll();
 
   if (activePrimaryTab === "organizzazione" && activeOrgTab === "admin") {
     renderBackups();
   }
 
-  setInterval(pollForChanges, 5000);
+  initPushNotifications();
+
+  // Wire up bottom navigation
+  document.querySelectorAll(".bottom-nav-item").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const dest = btn.dataset.dest;
+      if (dest === "altro") {
+        openMoreSheet();
+      } else {
+        navigateTo(dest);
+      }
+    });
+  });
+
+  // Wire up the "Altro" sheet items
+  document.querySelectorAll(".sheet-item").forEach(btn => {
+    btn.addEventListener("click", () => {
+      navigateTo(btn.dataset.dest);
+      closeMoreSheet();
+    });
+  });
+
+  // Close sheet when clicking backdrop
+  document.getElementById("moreSheetOverlay").addEventListener("click", event => {
+    if (event.target === event.currentTarget) closeMoreSheet();
+  });
+
+  updateBottomNavActive();
+
+  // Navigate via URL hash (e.g. when a push notification opens /#chat)
+  consumeNavigationHash();
+  window.addEventListener("hashchange", consumeNavigationHash);
+  window.addEventListener("focus", () => { consumeNavigationHash(); pollForChanges(); });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) { consumeNavigationHash(); pollForChanges(); }
+  });
+
+  // Service worker → client navigation message (from notification click)
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.addEventListener("message", event => {
+      const data = event.data || {};
+      if (data.type === "navigate" && typeof data.url === "string") {
+        const hash = data.url.split("#")[1];
+        if (hash) {
+          location.hash = "#" + hash;
+          consumeNavigationHash();
+        }
+      }
+    });
+  }
+
+  setInterval(pollForChanges, 2500);
+  setInterval(refreshActiveParticipants, 30000);
 });
