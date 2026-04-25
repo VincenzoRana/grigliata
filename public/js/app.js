@@ -374,10 +374,22 @@ function persistActiveParticipant() {
   else localStorage.removeItem(LOCAL_KEYS.activeParticipantId);
 }
 
+function setProfileSelectionLock(locked) {
+  const appShell = document.querySelector(".app-shell");
+  if (appShell) {
+    if ("inert" in appShell) {
+      appShell.inert = locked;
+    }
+    appShell.setAttribute("aria-hidden", locked ? "true" : "false");
+  }
+  document.body.classList.toggle("profile-selection-locked", locked);
+}
+
 function ensureActiveParticipant() {
   const exists = activeParticipantId && state.participants.some(p => p.id === activeParticipantId);
   if (!exists) activeParticipantId = null;
   persistActiveParticipant();
+  setProfileSelectionLock(!activeParticipantId && state.participants.length > 0);
 }
 
 function getActiveParticipant() {
@@ -1047,11 +1059,13 @@ function setActiveParticipant(participantId) {
   if (!participant) {
     activeParticipantId = null;
     persistActiveParticipant();
+    setProfileSelectionLock(state.participants.length > 0);
     renderAll();
     return;
   }
   activeParticipantId = participantId;
   persistActiveParticipant();
+  setProfileSelectionLock(false);
   prefillExpenseForActiveUser();
   renderAll();
   if (typeof updatePushUI === "function") updatePushUI();
@@ -4144,6 +4158,7 @@ function closeModal(force = false) {
 function openProfileSelectionPrompt() {
   if (profileSelectionPromptOpen || getActiveParticipant() || state.participants.length === 0) return;
   profileSelectionPromptOpen = true;
+  setProfileSelectionLock(true);
   openModal({
     title: "Seleziona il tuo profilo",
     text: "Al primo avvio devi scegliere chi sei. Non viene impostato nessun profilo di default.",
@@ -4629,6 +4644,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   document.addEventListener("keydown", event => {
     if (event.key !== "Escape") return;
+    const overlay = document.getElementById("modalOverlay");
+    if (!overlay.hidden && overlay.dataset.lockDismissal === "true") return;
     if (!document.getElementById("modalOverlay").hidden) {
       closeModal();
       return;
@@ -4641,6 +4658,34 @@ document.addEventListener("DOMContentLoaded", async () => {
       closeMoreSheet();
     }
   });
+
+  document.addEventListener("keydown", event => {
+    if (event.key !== "Tab") return;
+    const overlay = document.getElementById("modalOverlay");
+    if (overlay.hidden) return;
+    const shell = document.getElementById("modalShell");
+    const focusables = Array.from(shell.querySelectorAll(
+      "button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])"
+    ));
+    if (focusables.length === 0) return;
+    const first = focusables[0];
+    const last = focusables[focusables.length - 1];
+    const active = document.activeElement;
+    if (!shell.contains(active)) {
+      first.focus();
+      event.preventDefault();
+      return;
+    }
+    if (event.shiftKey && active === first) {
+      last.focus();
+      event.preventDefault();
+      return;
+    }
+    if (!event.shiftKey && active === last) {
+      first.focus();
+      event.preventDefault();
+    }
+  }, true);
 
   const expenseAmountInput = document.getElementById("expenseAmountInput");
   const expenseDescInput = document.getElementById("expenseDescInput");
