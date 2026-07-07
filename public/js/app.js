@@ -1488,18 +1488,21 @@ function renderShoppingList() {
   container.innerHTML = state.shoppingList
     .slice()
     .sort((a, b) => Number(a.checked) - Number(b.checked) || a.timestamp - b.timestamp)
-    .map((item, index) => `
+    .map(item => {
+      const itemIdArg = escapeAttr(JSON.stringify(item.id));
+      return `
       <div class="shopping-item ${item.checked ? "checked" : ""}">
         <div class="shopping-main">
-          <button class="shopping-check ${item.checked ? "checked" : ""}" type="button" onclick="toggleShoppingItem(${index})">${item.checked ? "✓" : ""}</button>
+          <button class="shopping-check ${item.checked ? "checked" : ""}" type="button" onclick="toggleShoppingItem(${itemIdArg})">${item.checked ? "✓" : ""}</button>
           <div>
             <div class="shopping-title">${escapeHtml(item.text)}</div>
             <div class="shopping-meta">Aggiunto da ${escapeHtml(labelForPerson(item.authorId))}</div>
           </div>
         </div>
-        <button class="link-btn danger" type="button" onclick="removeShoppingItem(${index})">Rimuovi</button>
+        <button class="link-btn danger" type="button" onclick="removeShoppingItem(${itemIdArg})">Rimuovi</button>
       </div>
-    `).join("");
+    `;
+    }).join("");
 }
 
 let lastChatRenderSig = "";
@@ -3782,8 +3785,8 @@ function addShoppingItem() {
   notifyOthers("Lista della spesa", `${activePerson.name} ha aggiunto "${text}" alla lista.`, "shopping", "/#lista");
 }
 
-function toggleShoppingItem(index) {
-  const item = state.shoppingList[index];
+function toggleShoppingItem(itemId) {
+  const item = state.shoppingList.find(entry => entry.id === itemId);
   if (!item) return;
   item.checked = !item.checked;
   scheduleSave();
@@ -3797,10 +3800,11 @@ function toggleShoppingItem(index) {
   );
 }
 
-function removeShoppingItem(index) {
-  const item = state.shoppingList[index];
+function removeShoppingItem(itemId) {
+  const itemIndex = state.shoppingList.findIndex(entry => entry.id === itemId);
+  const item = state.shoppingList[itemIndex];
   if (!item) return;
-  state.shoppingList.splice(index, 1);
+  state.shoppingList.splice(itemIndex, 1);
   scheduleSave();
   renderShoppingList();
   showToast("Elemento rimosso", `"${item.text}" è stato tolto dalla lista.`, "warning");
