@@ -1223,6 +1223,76 @@ textarea:focus-visible,
   justify-content: space-between;
 }
 
+.shopping-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.expense-shopping-picker {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.5);
+}
+
+.expense-shopping-header,
+.shopping-expense-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.expense-shopping-header {
+  justify-content: space-between;
+}
+
+.expense-shopping-mode button {
+  min-height: 38px;
+}
+
+.shopping-expense-list {
+  display: grid;
+  gap: 8px;
+}
+
+.shopping-expense-row {
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.shopping-expense-row.selected {
+  border-color: rgba(190, 77, 36, 0.32);
+}
+
+.shopping-expense-row input[type="checkbox"] {
+  flex: 0 0 auto;
+}
+
+.shopping-expense-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.shopping-expense-price {
+  width: 96px;
+  min-height: 38px;
+  padding: 8px;
+}
+
+.expense-shopping-summary {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+}
+
 .shopping-check {
   display: grid;
   place-items: center;
@@ -3320,6 +3390,10 @@ textarea:focus-visible,
   .expense-amount,
   .balance-value {
     text-align: left;
+  }
+
+  .shopping-actions {
+    justify-content: flex-start;
   }
 
   .segmented {

@@ -158,6 +158,11 @@ let profileSelectionPromptOpen = false;
 let expandedExpenseId = null;
 let emojiPickerTarget = null;
 let emojiPickerIsCouple = false;
+const shoppingExpenseDraft = {
+  selectedIds: new Set(),
+  amountMode: "total",
+  lineAmounts: {}
+};
 
 const grillGame = {
   intervalId: null,
@@ -250,9 +255,18 @@ function normalizeState(serverState) {
               text: typeof comment.text === "string" ? comment.text : "",
               timestamp: Number(comment.timestamp) || Date.now()
             })).filter(comment => comment.text.trim())
+          : [],
+        shoppingItems: Array.isArray(expense.shoppingItems)
+          ? expense.shoppingItems.map(item => ({
+              itemId: item.itemId || null,
+              text: typeof item.text === "string" ? item.text : "",
+              amount: Number(item.amount) > 0 ? round2(Number(item.amount)) : null
+            })).filter(item => item.itemId || item.text.trim())
           : []
       }))
     : [];
+
+  const expenseIds = new Set(next.expenses.map(expense => expense.id));
 
   next.chatMessages = Array.isArray(serverState.chatMessages)
     ? serverState.chatMessages.map((message, index) => ({
@@ -269,7 +283,13 @@ function normalizeState(serverState) {
         id: item.id || `legacy_shop_${index}`,
         text: typeof item.text === "string" ? item.text : "",
         authorId: item.authorId || null,
-        checked: Boolean(item.checked),
+        ownerId: participantIds.has(item.ownerId) ? item.ownerId : null,
+        purchased: Boolean(item.purchased || item.checked),
+        purchasedById: participantIds.has(item.purchasedById) ? item.purchasedById : null,
+        purchasedAt: Number(item.purchasedAt) || null,
+        expenseId: expenseIds.has(item.expenseId) ? item.expenseId : null,
+        expenseAmount: Number(item.expenseAmount) > 0 ? round2(Number(item.expenseAmount)) : null,
+        checked: Boolean(item.purchased || item.checked),
         timestamp: Number(item.timestamp) || Date.now()
       })).filter(item => item.text.trim())
     : [];
@@ -1093,6 +1113,120 @@ function renderExpenseForm() {
   select.value = defaultValue;
 
   setText("expenseActionHint", activePerson ? `Commenti veloci come ${activePerson.avatar} ${activePerson.name}` : "Seleziona un profilo per registrare la spesa");
+  renderExpenseShoppingPicker();
+}
+
+function getShoppingExpenseCandidates() {
+  return state.shoppingList.filter(item => !item.expenseId);
+}
+
+function getSelectedShoppingItems() {
+  const candidates = getShoppingExpenseCandidates();
+  return candidates.filter(item => shoppingExpenseDraft.selectedIds.has(item.id));
+}
+
+function renderExpenseShoppingPicker() {
+  const container = document.getElementById("expenseShoppingPicker");
+  if (!container) return;
+
+  const candidates = getShoppingExpenseCandidates();
+  for (const itemId of Array.from(shoppingExpenseDraft.selectedIds)) {
+    if (!candidates.some(item => item.id === itemId)) {
+      shoppingExpenseDraft.selectedIds.delete(itemId);
+      delete shoppingExpenseDraft.lineAmounts[itemId];
+    }
+  }
+
+  if (candidates.length === 0) {
+    container.innerHTML = "";
+    return;
+  }
+
+  const selectedCount = getSelectedShoppingItems().length;
+  container.innerHTML = `
+    <section class="expense-shopping-picker">
+      <div class="expense-shopping-header">
+        <div>
+          <strong>Da lista della spesa</strong>
+          <div class="shopping-meta">${selectedCount > 0 ? `${selectedCount} voci selezionate` : "Seleziona cosa hai comprato"}</div>
+        </div>
+        ${selectedCount > 0 ? '<button class="link-btn" type="button" onclick="clearExpenseShoppingSelection()">Svuota</button>' : ""}
+      </div>
+      <div class="segmented expense-shopping-mode" role="group" aria-label="Modalità prezzi">
+        <button class="${shoppingExpenseDraft.amountMode === "total" ? "active" : ""}" type="button" onclick="setExpenseShoppingAmountMode('total')">Totale unico</button>
+        <button class="${shoppingExpenseDraft.amountMode === "lines" ? "active" : ""}" type="button" onclick="setExpenseShoppingAmountMode('lines')">Prezzo per voce</button>
+      </div>
+      <div class="shopping-expense-list">
+        ${candidates.map(item => {
+          const itemIdArg = escapeAttr(JSON.stringify(item.id));
+          const selected = shoppingExpenseDraft.selectedIds.has(item.id);
+          const status = item.purchased
+            ? `Comprato da ${escapeHtml(labelForPerson(item.purchasedById || item.ownerId))}`
+            : item.ownerId
+              ? `In carico a ${escapeHtml(labelForPerson(item.ownerId))}`
+              : `Aggiunto da ${escapeHtml(labelForPerson(item.authorId))}`;
+          return `
+            <label class="shopping-expense-row ${selected ? "selected" : ""}">
+              <input type="checkbox" ${selected ? "checked" : ""} onchange="toggleExpenseShoppingSelection(${itemIdArg}, this.checked)">
+              <span class="shopping-expense-main">
+                <strong>${escapeHtml(item.text)}</strong>
+                <span class="shopping-meta">${status}</span>
+              </span>
+              ${shoppingExpenseDraft.amountMode === "lines" && selected ? `
+                <input class="shopping-expense-price" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0,00" value="${shoppingExpenseDraft.lineAmounts[item.id] || ""}" oninput="setExpenseShoppingLineAmount(${itemIdArg}, this.value)">
+              ` : ""}
+            </label>
+          `;
+        }).join("")}
+      </div>
+    </section>
+  `;
+}
+
+function toggleExpenseShoppingSelection(itemId, isSelected) {
+  if (isSelected) {
+    shoppingExpenseDraft.selectedIds.add(itemId);
+  } else {
+    shoppingExpenseDraft.selectedIds.delete(itemId);
+    delete shoppingExpenseDraft.lineAmounts[itemId];
+  }
+  updateExpenseAmountFromShoppingDraft();
+  renderExpenseShoppingPicker();
+}
+
+function setExpenseShoppingAmountMode(mode) {
+  shoppingExpenseDraft.amountMode = mode === "lines" ? "lines" : "total";
+  updateExpenseAmountFromShoppingDraft();
+  renderExpenseShoppingPicker();
+}
+
+function setExpenseShoppingLineAmount(itemId, value) {
+  const amount = Number(value);
+  if (Number.isFinite(amount) && amount > 0) {
+    shoppingExpenseDraft.lineAmounts[itemId] = round2(amount);
+  } else {
+    delete shoppingExpenseDraft.lineAmounts[itemId];
+  }
+  updateExpenseAmountFromShoppingDraft();
+}
+
+function updateExpenseAmountFromShoppingDraft() {
+  if (shoppingExpenseDraft.amountMode !== "lines") return;
+  const input = document.getElementById("expenseAmountInput");
+  if (!input) return;
+  const amount = getSelectedShoppingItems().reduce((total, item) => total + (shoppingExpenseDraft.lineAmounts[item.id] || 0), 0);
+  input.value = amount > 0 ? round2(amount).toFixed(2) : "";
+}
+
+function clearExpenseShoppingSelection() {
+  shoppingExpenseDraft.selectedIds.clear();
+  shoppingExpenseDraft.lineAmounts = {};
+  renderExpenseShoppingPicker();
+}
+
+function getShoppingExpenseDescription(items) {
+  if (items.length === 1) return items[0].text;
+  return `Lista spesa: ${items.map(item => item.text).join(", ")}`;
 }
 
 function prefillExpenseForActiveUser() {
@@ -1156,6 +1290,7 @@ function renderExpenseCard(expense) {
   const balance = getPersonBalance(expense.personId);
   const isExpanded = expandedExpenseId === expense.id;
   const comments = expense.comments || [];
+  const shoppingItems = expense.shoppingItems || [];
 
   return `
     <article class="expense-card">
@@ -1171,6 +1306,15 @@ function renderExpenseCard(expense) {
         </div>
         <div class="expense-amount">${formatMoney(expense.amount)}</div>
       </div>
+
+      ${shoppingItems.length > 0 ? `
+        <div class="expense-shopping-summary">
+          <span class="shopping-meta">Lista della spesa</span>
+          <div class="chip-row">
+            ${shoppingItems.map(item => `<span class="small-chip chip-neutral">${escapeHtml(item.text)}${item.amount ? ` · ${formatMoney(item.amount)}` : ""}</span>`).join("")}
+          </div>
+        </div>
+      ` : ""}
 
       <div class="expense-meta-row">
         <div class="chip-row">
@@ -1477,8 +1621,9 @@ function wishlistStatusLabel(status) {
 function renderShoppingList() {
   const container = document.getElementById("shoppingListContent");
   const total = state.shoppingList.length;
-  const done = state.shoppingList.filter(item => item.checked).length;
-  setText("shoppingMeta", total > 0 ? `${done}/${total} completati` : "");
+  const done = state.shoppingList.filter(item => item.purchased || item.checked).length;
+  const claimed = state.shoppingList.filter(item => item.ownerId && !item.purchased).length;
+  setText("shoppingMeta", total > 0 ? `${done}/${total} comprati${claimed ? ` · ${claimed} in carico` : ""}` : "");
 
   if (total === 0) {
     container.innerHTML = `<div class="empty-state"><strong>Lista vuota.</strong><br>Aggiungi gli acquisti da fare e spuntali quando sono sistemati.</div>`;
@@ -1487,19 +1632,38 @@ function renderShoppingList() {
 
   container.innerHTML = state.shoppingList
     .slice()
-    .sort((a, b) => Number(a.checked) - Number(b.checked) || a.timestamp - b.timestamp)
+    .sort((a, b) => Number(a.purchased || a.checked) - Number(b.purchased || b.checked) || a.timestamp - b.timestamp)
     .map(item => {
       const itemIdArg = escapeAttr(JSON.stringify(item.id));
+      const activePerson = getActiveParticipant();
+      const isPurchased = item.purchased || item.checked;
+      const canRelease = item.ownerId && activePerson?.id === item.ownerId && !isPurchased;
+      const ownershipAction = !isPurchased && !item.ownerId
+        ? `<button class="link-btn" type="button" onclick="takeShoppingItem(${itemIdArg})">Prendo io</button>`
+        : !isPurchased && item.ownerId !== activePerson?.id
+          ? `<button class="link-btn" type="button" onclick="takeShoppingItem(${itemIdArg})">Prendo io</button>`
+          : canRelease
+            ? `<button class="link-btn" type="button" onclick="releaseShoppingItem(${itemIdArg})">Lascio</button>`
+            : "";
+      const status = isPurchased
+        ? `Comprato da ${escapeHtml(labelForPerson(item.purchasedById || item.ownerId))}${item.expenseId ? " · spesa registrata" : ""}`
+        : item.ownerId
+          ? `In carico a ${escapeHtml(labelForPerson(item.ownerId))}`
+          : `Aggiunto da ${escapeHtml(labelForPerson(item.authorId))}`;
       return `
-      <div class="shopping-item ${item.checked ? "checked" : ""}">
+      <div class="shopping-item ${isPurchased ? "checked" : ""}">
         <div class="shopping-main">
-          <button class="shopping-check ${item.checked ? "checked" : ""}" type="button" onclick="toggleShoppingItem(${itemIdArg})">${item.checked ? "✓" : ""}</button>
+          <button class="shopping-check ${isPurchased ? "checked" : ""}" type="button" onclick="toggleShoppingItem(${itemIdArg})">${isPurchased ? "✓" : ""}</button>
           <div>
             <div class="shopping-title">${escapeHtml(item.text)}</div>
-            <div class="shopping-meta">Aggiunto da ${escapeHtml(labelForPerson(item.authorId))}</div>
+            <div class="shopping-meta">${status}</div>
           </div>
         </div>
-        <button class="link-btn danger" type="button" onclick="removeShoppingItem(${itemIdArg})">Rimuovi</button>
+        <div class="shopping-actions">
+          ${ownershipAction}
+          ${isPurchased && !item.expenseId ? `<button class="link-btn" type="button" onclick="startExpenseFromShoppingItem(${itemIdArg})">Registra spesa</button>` : ""}
+          <button class="link-btn danger" type="button" onclick="removeShoppingItem(${itemIdArg})">Rimuovi</button>
+        </div>
       </div>
     `;
     }).join("");
@@ -3412,9 +3576,19 @@ function drawPartyChallenge() {
 
 function addExpense() {
   const personId = document.getElementById("expensePersonSelect").value;
-  const description = document.getElementById("expenseDescInput").value.trim();
-  const amount = Number(document.getElementById("expenseAmountInput").value);
+  const selectedShoppingItems = getSelectedShoppingItems();
+  const descriptionInput = document.getElementById("expenseDescInput");
+  const description = descriptionInput.value.trim() || (selectedShoppingItems.length > 0 ? getShoppingExpenseDescription(selectedShoppingItems) : "");
+  const lineAmount = selectedShoppingItems.reduce((total, item) => total + (shoppingExpenseDraft.lineAmounts[item.id] || 0), 0);
+  const amount = shoppingExpenseDraft.amountMode === "lines" && selectedShoppingItems.length > 0
+    ? round2(lineAmount)
+    : Number(document.getElementById("expenseAmountInput").value);
   const quickComment = document.getElementById("expenseCommentInput").value.trim();
+
+  if (shoppingExpenseDraft.amountMode === "lines" && selectedShoppingItems.some(item => !(shoppingExpenseDraft.lineAmounts[item.id] > 0))) {
+    showToast("Prezzi mancanti", "Inserisci un prezzo valido per ogni voce selezionata.", "bad");
+    return;
+  }
 
   if (!personId || !description || !Number.isFinite(amount) || amount <= 0) {
     showToast("Spesa incompleta", "Servono pagatore, descrizione e importo valido.", "bad");
@@ -3427,7 +3601,12 @@ function addExpense() {
     description,
     amount: round2(amount),
     timestamp: Date.now(),
-    comments: []
+    comments: [],
+    shoppingItems: selectedShoppingItems.map(item => ({
+      itemId: item.id,
+      text: item.text,
+      amount: shoppingExpenseDraft.amountMode === "lines" ? shoppingExpenseDraft.lineAmounts[item.id] : null
+    }))
   };
 
   if (quickComment) {
@@ -3441,11 +3620,25 @@ function addExpense() {
   }
 
   state.expenses.push(expense);
+  selectedShoppingItems.forEach(item => {
+    item.ownerId = item.ownerId || personId;
+    item.purchased = true;
+    item.checked = true;
+    item.purchasedById = personId;
+    item.purchasedAt = expense.timestamp;
+    item.expenseId = expense.id;
+    item.expenseAmount = shoppingExpenseDraft.amountMode === "lines"
+      ? shoppingExpenseDraft.lineAmounts[item.id]
+      : selectedShoppingItems.length === 1 ? expense.amount : null;
+  });
   expandedExpenseId = quickComment ? expense.id : expandedExpenseId;
 
-  document.getElementById("expenseDescInput").value = "";
+  descriptionInput.value = "";
   document.getElementById("expenseAmountInput").value = "";
   document.getElementById("expenseCommentInput").value = "";
+  shoppingExpenseDraft.selectedIds.clear();
+  shoppingExpenseDraft.lineAmounts = {};
+  shoppingExpenseDraft.amountMode = "total";
 
   scheduleSave();
   renderAll();
@@ -3552,6 +3745,12 @@ function confirmDeleteExpense(expenseId) {
         className: "btn-danger",
         onClick: () => {
           state.expenses = state.expenses.filter(item => item.id !== expenseId);
+          state.shoppingList.forEach(item => {
+            if (item.expenseId === expenseId) {
+              item.expenseId = null;
+              item.expenseAmount = null;
+            }
+          });
           if (expandedExpenseId === expenseId) expandedExpenseId = null;
           scheduleSave();
           renderAll();
@@ -3775,6 +3974,12 @@ function addShoppingItem() {
     id: genId(),
     text,
     authorId: activePerson.id,
+    ownerId: null,
+    purchased: false,
+    purchasedById: null,
+    purchasedAt: null,
+    expenseId: null,
+    expenseAmount: null,
     checked: false,
     timestamp: Date.now()
   });
@@ -3786,18 +3991,69 @@ function addShoppingItem() {
 }
 
 function toggleShoppingItem(itemId) {
+  const activePerson = requireActiveParticipant("segnare un acquisto");
+  if (!activePerson) return;
   const item = state.shoppingList.find(entry => entry.id === itemId);
   if (!item) return;
-  item.checked = !item.checked;
+  const isPurchased = item.purchased || item.checked;
+  if (isPurchased && item.expenseId) {
+    showToast("Spesa già registrata", "Elimina prima la spesa collegata per riaprire questa voce.", "warning");
+    return;
+  }
+  item.purchased = !isPurchased;
+  item.checked = item.purchased;
+  if (item.purchased) {
+    item.ownerId = item.ownerId || activePerson.id;
+    item.purchasedById = activePerson.id;
+    item.purchasedAt = Date.now();
+  } else {
+    item.purchasedById = null;
+    item.purchasedAt = null;
+  }
   scheduleSave();
-  renderShoppingList();
-  const who = getActiveParticipant()?.name || "Qualcuno";
+  renderAll();
+  const who = activePerson.name;
   notifyOthers(
-    item.checked ? "Lista: preso!" : "Lista: di nuovo da prendere",
-    item.checked ? `${who} ha segnato "${item.text}" come preso.` : `${who} ha rimesso "${item.text}" da prendere.`,
+    item.purchased ? "Lista: preso!" : "Lista: di nuovo da prendere",
+    item.purchased ? `${who} ha segnato "${item.text}" come preso.` : `${who} ha rimesso "${item.text}" da prendere.`,
     "shopping",
     "/#lista"
   );
+}
+
+function takeShoppingItem(itemId) {
+  const activePerson = requireActiveParticipant("prendere in carico un acquisto");
+  if (!activePerson) return;
+  const item = state.shoppingList.find(entry => entry.id === itemId);
+  if (!item || item.purchased) return;
+  item.ownerId = activePerson.id;
+  scheduleSave();
+  renderAll();
+  showToast("Acquisto preso in carico", `${activePerson.name} si occupa di "${item.text}".`, "good");
+  notifyOthers("Lista della spesa", `${activePerson.name} prende in carico "${item.text}".`, "shopping", "/#lista");
+}
+
+function releaseShoppingItem(itemId) {
+  const activePerson = requireActiveParticipant("lasciare un acquisto");
+  if (!activePerson) return;
+  const item = state.shoppingList.find(entry => entry.id === itemId);
+  if (!item || item.purchased || item.ownerId !== activePerson.id) return;
+  item.ownerId = null;
+  scheduleSave();
+  renderAll();
+  showToast("Acquisto liberato", `"${item.text}" torna disponibile per tutti.`, "warning");
+}
+
+function startExpenseFromShoppingItem(itemId) {
+  const item = state.shoppingList.find(entry => entry.id === itemId);
+  if (!item || item.expenseId) return;
+  shoppingExpenseDraft.selectedIds.clear();
+  shoppingExpenseDraft.lineAmounts = {};
+  shoppingExpenseDraft.amountMode = "total";
+  shoppingExpenseDraft.selectedIds.add(item.id);
+  setSection("spese");
+  renderAll();
+  document.getElementById("expenseDescInput")?.focus();
 }
 
 function removeShoppingItem(itemId) {
@@ -3806,7 +4062,7 @@ function removeShoppingItem(itemId) {
   if (!item) return;
   state.shoppingList.splice(itemIndex, 1);
   scheduleSave();
-  renderShoppingList();
+  renderAll();
   showToast("Elemento rimosso", `"${item.text}" è stato tolto dalla lista.`, "warning");
 }
 
