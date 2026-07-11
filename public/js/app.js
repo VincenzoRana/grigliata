@@ -219,7 +219,8 @@ function normalizeState(serverState) {
         id: p.id || `legacy_participant_${index}`,
         name: typeof p.name === "string" && p.name.trim() ? p.name.trim() : `Partecipante ${index + 1}`,
         coupleId: p.coupleId || null,
-        avatar: p.avatar || AVATAR_POOL[index % AVATAR_POOL.length]
+        avatar: p.avatar || AVATAR_POOL[index % AVATAR_POOL.length],
+        attending: p.attending !== false
       }))
     : next.participants;
 
@@ -406,14 +407,14 @@ function setProfileSelectionLock(locked) {
 }
 
 function ensureActiveParticipant() {
-  const exists = activeParticipantId && state.participants.some(p => p.id === activeParticipantId);
+  const exists = activeParticipantId && state.participants.some(p => p.id === activeParticipantId && p.attending !== false);
   if (!exists) activeParticipantId = null;
   persistActiveParticipant();
-  setProfileSelectionLock(!activeParticipantId && state.participants.length > 0);
+  setProfileSelectionLock(!activeParticipantId && getAttendingParticipants().length > 0);
 }
 
 function getActiveParticipant() {
-  return state.participants.find(p => p.id === activeParticipantId) || null;
+  return state.participants.find(p => p.id === activeParticipantId && p.attending !== false) || null;
 }
 
 function formatMoney(value) {
@@ -455,9 +456,18 @@ function personById(personId) {
   return state.participants.find(p => p.id === personId) || null;
 }
 
-function labelForPerson(personId, fallback = "Ex partecipante") {
+function labelForPerson(personId, fallback = "Profilo non disponibile") {
   const person = personById(personId);
   return person ? `${person.avatar} ${person.name}` : fallback;
+}
+
+function isAttending(personOrId) {
+  const participant = typeof personOrId === "string" ? personById(personOrId) : personOrId;
+  return Boolean(participant && participant.attending !== false);
+}
+
+function getAttendingParticipants() {
+  return state.participants.filter(isAttending);
 }
 
 function genId() {
@@ -662,11 +672,12 @@ function getTotalExpenses() {
 }
 
 function getPerPersonShare() {
-  return state.participants.length > 0 ? getTotalExpenses() / state.participants.length : 0;
+  const attendees = getAttendingParticipants();
+  return attendees.length > 0 ? getTotalExpenses() / attendees.length : 0;
 }
 
 function getPersonBalance(personId) {
-  return getPersonTotal(personId) - getPerPersonShare();
+  return getPersonTotal(personId) - (isAttending(personId) ? getPerPersonShare() : 0);
 }
 
 function getCouple(coupleId) {
@@ -676,19 +687,19 @@ function getCouple(coupleId) {
 function getCoupleName(coupleId) {
   const couple = getCouple(coupleId);
   if (!couple) return "";
-  return couple.members.map(personId => personById(personId)?.name || "?").join(" & ");
+  return couple.members.filter(isAttending).map(personId => personById(personId)?.name || "?").join(" & ");
 }
 
 function getCoupleTotal(coupleId) {
   const couple = getCouple(coupleId);
   if (!couple) return 0;
-  return couple.members.reduce((sum, personId) => sum + getPersonTotal(personId), 0);
+  return couple.members.filter(isAttending).reduce((sum, personId) => sum + getPersonTotal(personId), 0);
 }
 
 function getCoupleShare(coupleId) {
   const couple = getCouple(coupleId);
   if (!couple) return 0;
-  return getPerPersonShare() * couple.members.length;
+  return getPerPersonShare() * couple.members.filter(isAttending).length;
 }
 
 function getCoupleBalance(coupleId) {
@@ -698,6 +709,8 @@ function getCoupleBalance(coupleId) {
 function getUnits() {
   const units = [];
   state.couples.forEach(couple => {
+    const members = couple.members.filter(isAttending);
+    if (members.length !== 2) return;
     units.push({
       id: couple.id,
       type: "couple",
@@ -706,8 +719,11 @@ function getUnits() {
       balance: round2(getCoupleBalance(couple.id))
     });
   });
-  state.participants
-    .filter(participant => !participant.coupleId)
+  getAttendingParticipants()
+    .filter(participant => {
+      const couple = participant.coupleId ? getCouple(participant.coupleId) : null;
+      return !couple || couple.members.filter(isAttending).length !== 2;
+    })
     .forEach(participant => {
       units.push({
         id: participant.id,
@@ -765,8 +781,9 @@ function getExpenseCommentCount() {
 }
 
 function getPersonBadge(personId) {
-  if (state.participants.length === 0) return null;
-  const totals = state.participants.map(participant => ({
+  const attendees = getAttendingParticipants();
+  if (attendees.length === 0) return null;
+  const totals = attendees.map(participant => ({
     id: participant.id,
     total: getPersonTotal(participant.id)
   }));
@@ -900,10 +917,11 @@ function renderIdentity() {
   }
 
   if (!identitySwitcher) return;
-  if (state.participants.length === 0) {
+  const attendees = getAttendingParticipants();
+  if (attendees.length === 0) {
     identitySwitcher.innerHTML = `<div class="empty-state"><strong>Nessun partecipante.</strong><br>Aggiungi prima il gruppo per sbloccare profili, commenti e giochi.</div>`;
   } else {
-    identitySwitcher.innerHTML = state.participants.map(participant => `
+    identitySwitcher.innerHTML = attendees.map(participant => `
       <button class="identity-chip ${participant.id === activeParticipantId ? "active" : ""}" type="button" data-participant-id="${participant.id}" onclick="setActiveParticipant('${participant.id}')">
         <span class="avatar">${participant.avatar}</span>
         <span>${escapeHtml(participant.name)}</span>
@@ -926,7 +944,7 @@ function renderHome() {
   if (greetingAvatar) greetingAvatar.textContent = activePerson ? activePerson.avatar : "👤";
   if (greetingName) greetingName.textContent = activePerson ? activePerson.name : "Partecipante";
   if (greetingSub) {
-    const n = state.participants.length;
+    const n = getAttendingParticipants().length;
     greetingSub.textContent = activePerson
       ? `Gruppo di ${n} ${n === 1 ? "persona" : "persone"} · stai segnando tutto come ${activePerson.avatar} ${activePerson.name}.`
       : "Seleziona il tuo profilo per iniziare a segnare le spese.";
@@ -1076,10 +1094,10 @@ function setText(id, text) {
 
 function setActiveParticipant(participantId) {
   const participant = personById(participantId);
-  if (!participant) {
+  if (!participant || !isAttending(participant)) {
     activeParticipantId = null;
     persistActiveParticipant();
-    setProfileSelectionLock(state.participants.length > 0);
+    setProfileSelectionLock(getAttendingParticipants().length > 0);
     renderAll();
     return;
   }
@@ -1098,11 +1116,11 @@ function renderExpenseForm() {
   const select = document.getElementById("expensePersonSelect");
   if (!select) return;
   const currentValue = select.value;
-  const hasCurrentValue = state.participants.some(participant => participant.id === currentValue);
+  const hasCurrentValue = getAttendingParticipants().some(participant => participant.id === currentValue);
   const activePerson = getActiveParticipant();
   select.innerHTML = `
     <option value="" ${!hasCurrentValue && !activePerson ? "selected" : ""} disabled>Seleziona un profilo</option>
-    ${state.participants.map(participant => `
+    ${getAttendingParticipants().map(participant => `
       <option value="${participant.id}" ${participant.id === (hasCurrentValue ? currentValue : activePerson?.id) ? "selected" : ""}>
         ${participant.avatar} ${escapeHtml(participant.name)}
       </option>
@@ -1160,8 +1178,9 @@ function renderExpenseShoppingPicker() {
         ${candidates.map(item => {
           const itemIdArg = escapeAttr(JSON.stringify(item.id));
           const selected = shoppingExpenseDraft.selectedIds.has(item.id);
+          const buyerId = item.purchasedById || item.ownerId;
           const status = item.purchased
-            ? `Comprato da ${escapeHtml(labelForPerson(item.purchasedById || item.ownerId))}`
+            ? buyerId ? `Comprato da ${escapeHtml(labelForPerson(buyerId))}` : "Comprato"
             : item.ownerId
               ? `In carico a ${escapeHtml(labelForPerson(item.ownerId))}`
               : `Aggiunto da ${escapeHtml(labelForPerson(item.authorId))}`;
@@ -1238,13 +1257,14 @@ function prefillExpenseForActiveUser() {
 
 function renderSpendingLeaderboard() {
   const container = document.getElementById("spendingLeaderboard");
-  if (state.participants.length === 0) {
+  const attendees = getAttendingParticipants();
+  if (attendees.length === 0) {
     container.innerHTML = `<div class="empty-state"><strong>Gruppo vuoto.</strong><br>Vai in Organizzazione > Gruppo e aggiungi i partecipanti.</div>`;
     setText("spendingMeta", "");
     return;
   }
 
-  const rows = [...state.participants]
+  const rows = [...attendees]
     .sort((a, b) => getPersonTotal(b.id) - getPersonTotal(a.id))
     .map(participant => {
       const badge = getPersonBadge(participant.id);
@@ -1426,7 +1446,7 @@ function renderRegulation() {
   }
 
   if (activeBalanceView === "person") {
-    const rows = [...state.participants]
+    const rows = [...getAttendingParticipants()]
       .sort((a, b) => getPersonBalance(b.id) - getPersonBalance(a.id))
       .map(participant => renderBalanceItem({
         avatar: participant.avatar,
@@ -1645,8 +1665,9 @@ function renderShoppingList() {
           : canRelease
             ? `<button class="link-btn" type="button" onclick="releaseShoppingItem(${itemIdArg})">Lascio</button>`
             : "";
+      const buyerId = item.purchasedById || item.ownerId;
       const status = isPurchased
-        ? `Comprato da ${escapeHtml(labelForPerson(item.purchasedById || item.ownerId))}${item.expenseId ? " · spesa registrata" : ""}`
+        ? `${buyerId ? `Comprato da ${escapeHtml(labelForPerson(buyerId))}` : "Comprato"}${item.expenseId ? " · spesa registrata" : ""}`
         : item.ownerId
           ? `In carico a ${escapeHtml(labelForPerson(item.ownerId))}`
           : `Aggiunto da ${escapeHtml(labelForPerson(item.authorId))}`;
@@ -1787,17 +1808,22 @@ function renderChat() {
 
 function renderGroupSummary() {
   const container = document.getElementById("groupSummary");
-  const singles = state.participants.filter(participant => !participant.coupleId).length;
-  const nonSpenders = state.participants.filter(participant => getPersonTotal(participant.id) === 0).length;
+  const attendees = getAttendingParticipants();
+  const activeCouples = state.couples.filter(couple => couple.members.filter(isAttending).length === 2);
+  const singles = attendees.filter(participant => {
+    const couple = participant.coupleId ? getCouple(participant.coupleId) : null;
+    return !couple || couple.members.filter(isAttending).length !== 2;
+  }).length;
+  const nonSpenders = attendees.filter(participant => getPersonTotal(participant.id) === 0).length;
 
   container.innerHTML = `
     <div class="group-kpi-grid">
       <div class="group-kpi">
-        <span class="group-kpi-value">${state.participants.length}</span>
-        <span class="leaderboard-meta">partecipanti totali</span>
+        <span class="group-kpi-value">${attendees.length}</span>
+        <span class="leaderboard-meta">partecipanti presenti</span>
       </div>
       <div class="group-kpi">
-        <span class="group-kpi-value">${state.couples.length}</span>
+        <span class="group-kpi-value">${activeCouples.length}</span>
         <span class="leaderboard-meta">coppie registrate</span>
       </div>
       <div class="group-kpi">
@@ -1873,6 +1899,7 @@ function renderParticipantEditor(participant) {
           </div>
         </div>
         <div class="participant-actions">
+          <button class="link-btn" type="button" onclick="toggleParticipantAttendance('${participant.id}')">${participant.attending === false ? "Segna presente" : "Escludi dai conti"}</button>
           <button class="link-btn danger" type="button" onclick="confirmRemovePerson('${participant.id}')">Rimuovi</button>
         </div>
       </div>
@@ -1894,6 +1921,7 @@ function renderParticipantCard(participant) {
           </div>
         </div>
         <div class="participant-actions">
+          <button class="link-btn" type="button" onclick="toggleParticipantAttendance('${participant.id}')">${participant.attending === false ? "Segna presente" : "Escludi dai conti"}</button>
           <button class="link-btn danger" type="button" onclick="confirmRemovePerson('${participant.id}')">Rimuovi</button>
         </div>
       </div>
@@ -3815,6 +3843,28 @@ function renamePerson(personId, newName) {
   renderAll();
 }
 
+function toggleParticipantAttendance(personId) {
+  const person = personById(personId);
+  if (!person) return;
+  const attendees = getAttendingParticipants();
+  if (person.attending !== false && attendees.length <= 1) {
+    showToast("Serve un partecipante", "Non puoi escludere l'ultima persona dai conteggi.", "warning");
+    return;
+  }
+  person.attending = person.attending === false;
+  if (!person.attending && activeParticipantId === person.id) {
+    activeParticipantId = null;
+    persistActiveParticipant();
+  }
+  scheduleSave();
+  renderAll();
+  showToast(
+    person.attending ? "Partecipante incluso" : "Partecipante escluso",
+    person.attending ? `${person.name} torna nei conteggi.` : `${person.name} non viene più considerata/o per quote e saldi.`,
+    person.attending ? "good" : "warning"
+  );
+}
+
 function confirmRemovePerson(personId) {
   const person = personById(personId);
   if (!person) return;
@@ -4416,7 +4466,8 @@ function closeModal(force = false) {
 }
 
 function openProfileSelectionPrompt() {
-  if (profileSelectionPromptOpen || getActiveParticipant() || state.participants.length === 0) return;
+  const attendees = getAttendingParticipants();
+  if (profileSelectionPromptOpen || getActiveParticipant() || attendees.length === 0) return;
   profileSelectionPromptOpen = true;
   setProfileSelectionLock(true);
   openModal({
@@ -4424,7 +4475,7 @@ function openProfileSelectionPrompt() {
     text: "Al primo avvio devi scegliere chi sei. Non viene impostato nessun profilo di default.",
     bodyHtml: `
       <div class="profile-selection-grid">
-        ${state.participants.map(participant => `
+        ${attendees.map(participant => `
           <button class="identity-chip profile-choice" type="button" onclick="confirmProfileSelection('${participant.id}')">
             <span class="avatar">${participant.avatar}</span>
             <span>${escapeHtml(participant.name)}</span>
