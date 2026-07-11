@@ -668,6 +668,11 @@ textarea {
   margin-bottom: 16px;
 }
 
+.shopping-layout {
+  display: grid;
+  gap: 16px;
+}
+
 .stack-form {
   display: grid;
   gap: 14px;
@@ -1221,7 +1226,7 @@ textarea:focus-visible,
 
 .shopping-item {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   justify-content: space-between;
   border-left-width: 4px;
@@ -1284,7 +1289,7 @@ textarea:focus-visible,
 .shopping-actions {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-end;
+  justify-content: flex-start;
   gap: 8px;
 }
 
