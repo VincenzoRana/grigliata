@@ -1221,6 +1221,57 @@ textarea:focus-visible,
 
 .shopping-item {
   justify-content: space-between;
+  border-left-width: 4px;
+}
+
+.shopping-state-open {
+  border-left-color: rgba(77, 45, 32, 0.32);
+}
+
+.shopping-state-claimed {
+  border-left-color: #d59a2c;
+  background: rgba(255, 244, 215, 0.72);
+}
+
+.shopping-state-purchased {
+  border-left-color: var(--good);
+  background: rgba(224, 248, 236, 0.72);
+}
+
+.shopping-state-recorded {
+  border-left-color: #4b84c8;
+  background: rgba(228, 240, 255, 0.72);
+}
+
+.shopping-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.shopping-status.open {
+  color: var(--ink-soft);
+  background: rgba(77, 45, 32, 0.1);
+}
+
+.shopping-status.claimed {
+  color: #76510a;
+  background: rgba(245, 207, 116, 0.38);
+}
+
+.shopping-status.purchased {
+  color: #17663f;
+  background: rgba(91, 194, 130, 0.24);
+}
+
+.shopping-status.recorded {
+  color: #1f5b9e;
+  background: rgba(99, 162, 230, 0.24);
 }
 
 .shopping-actions {

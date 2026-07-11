@@ -1666,21 +1666,35 @@ function renderShoppingList() {
             ? `<button class="link-btn" type="button" onclick="releaseShoppingItem(${itemIdArg})">Lascio</button>`
             : "";
       const buyerId = item.purchasedById || item.ownerId;
-      const status = isPurchased
-        ? `${buyerId ? `Comprato da ${escapeHtml(labelForPerson(buyerId))}` : "Comprato"}${item.expenseId ? " · spesa registrata" : ""}`
+      const itemState = item.expenseId
+        ? "recorded"
+        : isPurchased
+          ? "purchased"
+          : item.ownerId
+            ? "claimed"
+            : "open";
+      const stateLabel = {
+        open: "Da comprare",
+        claimed: "In carico",
+        purchased: "Comprato",
+        recorded: "Spesa registrata"
+      }[itemState];
+      const details = isPurchased
+        ? buyerId ? `Comprato da ${escapeHtml(labelForPerson(buyerId))}` : "Acquisto segnato senza profilo"
         : item.ownerId
           ? `In carico a ${escapeHtml(labelForPerson(item.ownerId))}`
           : `Aggiunto da ${escapeHtml(labelForPerson(item.authorId))}`;
       return `
-      <div class="shopping-item ${isPurchased ? "checked" : ""}">
+      <div class="shopping-item shopping-state-${itemState} ${isPurchased ? "checked" : ""}">
         <div class="shopping-main">
-          <button class="shopping-check ${isPurchased ? "checked" : ""}" type="button" onclick="toggleShoppingItem(${itemIdArg})">${isPurchased ? "✓" : ""}</button>
+          <button class="shopping-check ${isPurchased ? "checked" : ""}" type="button" onclick="toggleShoppingItem(${itemIdArg})" aria-label="${isPurchased ? "Segna come da comprare" : "Segna come comprato"}" title="${isPurchased ? "Segna come da comprare" : "Segna come comprato"}">${isPurchased ? "✓" : ""}</button>
           <div>
             <div class="shopping-title">${escapeHtml(item.text)}</div>
-            <div class="shopping-meta">${status}</div>
+            <div class="shopping-meta">${details}</div>
           </div>
         </div>
         <div class="shopping-actions">
+          <span class="shopping-status ${itemState}">${stateLabel}</span>
           ${ownershipAction}
           ${isPurchased && !item.expenseId ? `<button class="link-btn" type="button" onclick="startExpenseFromShoppingItem(${itemIdArg})">Registra spesa</button>` : ""}
           <button class="link-btn danger" type="button" onclick="removeShoppingItem(${itemIdArg})">Rimuovi</button>
