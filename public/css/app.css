@@ -1220,8 +1220,15 @@ textarea:focus-visible,
 }
 
 .shopping-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   justify-content: space-between;
   border-left-width: 4px;
+}
+
+.shopping-main {
+  width: 100%;
 }
 
 .shopping-state-open {
@@ -3442,6 +3449,10 @@ textarea:focus-visible,
   .backup-item {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .shopping-item {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .expense-amount,
