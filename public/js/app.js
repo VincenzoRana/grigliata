@@ -220,7 +220,8 @@ function normalizeState(serverState) {
         name: typeof p.name === "string" && p.name.trim() ? p.name.trim() : `Partecipante ${index + 1}`,
         coupleId: p.coupleId || null,
         avatar: p.avatar || AVATAR_POOL[index % AVATAR_POOL.length],
-        attending: p.attending !== false
+        attending: p.attending !== false,
+        quotaUnits: Math.max(1, Math.floor(Number(p.quotaUnits) || 1))
       }))
     : next.participants;
 
@@ -470,6 +471,15 @@ function getAttendingParticipants() {
   return state.participants.filter(isAttending);
 }
 
+function getParticipantQuotaUnits(personOrId) {
+  const participant = typeof personOrId === "string" ? personById(personOrId) : personOrId;
+  return participant ? Math.max(1, Math.floor(Number(participant.quotaUnits) || 1)) : 0;
+}
+
+function getTotalQuotaUnits() {
+  return getAttendingParticipants().reduce((total, participant) => total + getParticipantQuotaUnits(participant), 0);
+}
+
 function genId() {
   return `id_${state.nextId++}`;
 }
@@ -672,12 +682,12 @@ function getTotalExpenses() {
 }
 
 function getPerPersonShare() {
-  const attendees = getAttendingParticipants();
-  return attendees.length > 0 ? getTotalExpenses() / attendees.length : 0;
+  const totalQuotaUnits = getTotalQuotaUnits();
+  return totalQuotaUnits > 0 ? getTotalExpenses() / totalQuotaUnits : 0;
 }
 
 function getPersonBalance(personId) {
-  return getPersonTotal(personId) - (isAttending(personId) ? getPerPersonShare() : 0);
+  return getPersonTotal(personId) - (isAttending(personId) ? getPerPersonShare() * getParticipantQuotaUnits(personId) : 0);
 }
 
 function getCouple(coupleId) {
@@ -699,7 +709,7 @@ function getCoupleTotal(coupleId) {
 function getCoupleShare(coupleId) {
   const couple = getCouple(coupleId);
   if (!couple) return 0;
-  return getPerPersonShare() * couple.members.filter(isAttending).length;
+  return getPerPersonShare() * couple.members.filter(isAttending).reduce((total, personId) => total + getParticipantQuotaUnits(personId), 0);
 }
 
 function getCoupleBalance(coupleId) {
@@ -1451,7 +1461,7 @@ function renderRegulation() {
       .map(participant => renderBalanceItem({
         avatar: participant.avatar,
         name: participant.name,
-        subtitle: `Ha anticipato ${formatMoney(getPersonTotal(participant.id))} su una quota di ${formatMoney(getPerPersonShare())}`,
+        subtitle: `Ha anticipato ${formatMoney(getPersonTotal(participant.id))} su ${getParticipantQuotaUnits(participant)} ${getParticipantQuotaUnits(participant) === 1 ? "quota" : "quote"} da ${formatMoney(getPerPersonShare())}`,
         balance: getPersonBalance(participant.id),
         positiveLabel: "Riceve",
         negativeLabel: "Deve dare"
@@ -1465,8 +1475,8 @@ function renderRegulation() {
         avatar: unit.avatar,
         name: unit.name,
         subtitle: unit.type === "couple"
-          ? `Quota coppia su ${formatMoney(getPerPersonShare() * 2)}`
-          : `Quota singola su ${formatMoney(getPerPersonShare())}`,
+          ? `Quota coppia su ${formatMoney(getCoupleShare(unit.id))}`
+          : `${getParticipantQuotaUnits(unit.id)} ${getParticipantQuotaUnits(unit.id) === 1 ? "quota" : "quote"} su ${formatMoney(getPerPersonShare())}`,
         balance: unit.balance,
         positiveLabel: unit.type === "couple" ? "Ricevono" : "Riceve",
         negativeLabel: unit.type === "couple" ? "Devono dare" : "Deve dare"
@@ -1828,7 +1838,7 @@ function renderGroupSummary() {
     const couple = participant.coupleId ? getCouple(participant.coupleId) : null;
     return !couple || couple.members.filter(isAttending).length !== 2;
   }).length;
-  const nonSpenders = attendees.filter(participant => getPersonTotal(participant.id) === 0).length;
+  const totalQuotaUnits = getTotalQuotaUnits();
 
   container.innerHTML = `
     <div class="group-kpi-grid">
@@ -1845,8 +1855,8 @@ function renderGroupSummary() {
         <span class="leaderboard-meta">singoli/e</span>
       </div>
       <div class="group-kpi">
-        <span class="group-kpi-value">${nonSpenders}</span>
-        <span class="leaderboard-meta">persone senza spese</span>
+        <span class="group-kpi-value">${totalQuotaUnits}</span>
+        <span class="leaderboard-meta">quote totali</span>
       </div>
     </div>
   `;
@@ -1913,7 +1923,7 @@ function renderParticipantEditor(participant) {
           </div>
         </div>
         <div class="participant-actions">
-          <button class="link-btn" type="button" onclick="toggleParticipantAttendance('${participant.id}')">${participant.attending === false ? "Segna presente" : "Escludi dai conti"}</button>
+          ${renderParticipantCountControls(participant)}
           <button class="link-btn danger" type="button" onclick="confirmRemovePerson('${participant.id}')">Rimuovi</button>
         </div>
       </div>
@@ -1935,11 +1945,26 @@ function renderParticipantCard(participant) {
           </div>
         </div>
         <div class="participant-actions">
-          <button class="link-btn" type="button" onclick="toggleParticipantAttendance('${participant.id}')">${participant.attending === false ? "Segna presente" : "Escludi dai conti"}</button>
+          ${renderParticipantCountControls(participant)}
           <button class="link-btn danger" type="button" onclick="confirmRemovePerson('${participant.id}')">Rimuovi</button>
         </div>
       </div>
     </div>
+  `;
+}
+
+function renderParticipantCountControls(participant) {
+  const attending = participant.attending !== false;
+  const units = getParticipantQuotaUnits(participant);
+  return `
+    <button class="participant-switch ${attending ? "active" : ""}" type="button" role="switch" aria-checked="${attending}" onclick="toggleParticipantAttendance('${participant.id}')">
+      <span class="participant-switch-track" aria-hidden="true"><span></span></span>
+      <span>${attending ? "Nei conti" : "Escluso"}</span>
+    </button>
+    <label class="quota-stepper">
+      <span>Quote</span>
+      <input type="number" min="1" max="20" step="1" value="${units}" ${attending ? "" : "disabled"} onchange="setParticipantQuotaUnits('${participant.id}', this.value)">
+    </label>
   `;
 }
 
@@ -3877,6 +3902,16 @@ function toggleParticipantAttendance(personId) {
     person.attending ? `${person.name} torna nei conteggi.` : `${person.name} non viene più considerata/o per quote e saldi.`,
     person.attending ? "good" : "warning"
   );
+}
+
+function setParticipantQuotaUnits(personId, value) {
+  const person = personById(personId);
+  if (!person) return;
+  const units = Math.max(1, Math.min(20, Math.floor(Number(value) || 1)));
+  person.quotaUnits = units;
+  scheduleSave();
+  renderAll();
+  showToast("Quote aggiornate", `${person.name} conta per ${units} ${units === 1 ? "quota" : "quote"}.`, "good");
 }
 
 function confirmRemovePerson(personId) {
